@@ -1,0 +1,13 @@
+.venv/
+.local/
+validation.local/
+__pycache__/
+*.pyc
+node_modules/
+*.log
+*.zip
+.env
+.env.*
+*.pem
+*.key
+account.json

@@ -1,0 +1,12 @@
+{
+  "name": "flop-did-chat",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Local Talisman DID chat for the FLOP devnet gateway",
+  "license": "MIT",
+  "author": "did:key:z6Mkt3DNtpGBNh1KHYwLQEk6QtCcJ7vVaRPze1SU7MyhFMVD",
+  "scripts": {
+    "test:ui-core": "node --test tests/core.test.mjs"
+  }
+}

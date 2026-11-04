@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="chat-local" content="__CSRF__">
+<title>FLOP DID Chat</title><link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/style.css"><script type="module" src="/app.js"></script>
+</head>
+<body>
+<svg class="symbol-library" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+<symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+<symbol id="i-chat" viewBox="0 0 24 24"><path d="M20 11.5a8 8 0 0 1-8 8H5l-3 2v-10a9 9 0 0 1 18 0Z"/><path d="M7 10h8M7 14h5"/></symbol>
+<symbol id="i-wallet" viewBox="0 0 24 24"><path d="M20 8V5H5a3 3 0 0 0 0 6h16v9H5a3 3 0 0 1-3-3V8"/><path d="M21 11h-6v5h6M17.5 13.5h.1"/></symbol>
+<symbol id="i-send" viewBox="0 0 24 24"><path d="m5 12 7-7 7 7M12 5v15"/></symbol>
+<symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M6 6a8 8 0 0 1 13 3M18 18A8 8 0 0 1 5 15"/></symbol>
+<symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M15 8V4H4v11h4"/></symbol>
+<symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+<symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 7h5m4 0h7M4 17h9m4 0h3"/><circle cx="11" cy="7" r="2"/><circle cx="15" cy="17" r="2"/></symbol>
+<symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14m-5-5 5 5-5 5"/></symbol>
+<symbol id="i-shield" viewBox="0 0 24 24"><path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6l8-3Z"/><path d="m8 12 3 3 5-6"/></symbol>
+</svg>
+<div class="app-shell">
+<aside class="sidebar" id="sidebar">
+<a class="brand" href="/" aria-label="FLOP Chat">FLOP Chat</a>
+<button id="new-chat" class="button new-chat"><svg><use href="#i-plus"/></svg><span data-i18n="newChat">New conversation</span></button>
+<div class="sidebar-label" data-i18n="conversations">Conversations</div>
+<nav id="conversation-list" class="conversation-list" aria-label="Conversations"></nav>
+<div class="sidebar-bottom">
+<label class="remember"><input id="remember" type="checkbox"><span data-i18n="remember">Keep history on this device</span></label>
+<p class="micro" data-i18n="historyPrivacy">Messages saved on this device only.</p>
+<button id="clear-history" class="text-button" data-i18n="clearHistory">Clear local conversations</button>
+<div class="author"><span data-i18n="author">Author DID</span><code id="author-did"></code></div>
+</div>
+</aside>
+<main class="workspace">
+<header class="topbar">
+<div class="model-area">
+<label class="overline" for="model-select" data-i18n="model">Model</label>
+<select id="model-select" aria-label="Model"><option data-i18n="loadingModels">Loading model catalog…</option></select>
+<span id="model-access" class="micro"></span>
+</div>
+<div class="topbar-actions">
+<span class="network-pill"><span class="dot"></span>FLOP devnet</span>
+<button id="lang" class="button language" aria-label="Passer en français">FR</button>
+<button id="connect" class="button wallet"><svg><use href="#i-wallet"/></svg><span id="connect-label" data-i18n="connect">Connect Talisman</span></button>
+</div>
+</header>
+<div class="network-note"><span data-i18n="devnet">Devnet · test tokens with no monetary value.</span><span class="local-indicator" data-i18n="local">Local application</span></div>
+<div id="banner" class="banner" role="status" aria-live="polite" hidden></div>
+<section class="chat-area" aria-label="Chat">
+<div id="welcome" class="welcome">
+<h1 data-i18n="welcomeTitle">FLOP Chat</h1>
+<p class="welcome-copy" data-i18n="welcomeCopy">Connect Talisman to send a message.</p>
+</div>
+<div id="messages" class="messages" aria-live="polite" aria-relevant="additions"></div>
+<div id="working" class="working" hidden><span class="working-dot"></span><span data-i18n="working">Request sent. Waiting for the network…</span></div>
+</section>
+<footer class="composer-area">
+<div id="reconcile-note" class="reconcile-note" hidden><span data-i18n="unresolved">A request still needs reconciliation. Check its receipt before sending another.</span><button id="reconcile" class="text-button" data-i18n="checkReceipt">Check receipts</button></div>
+<form id="chat-form" class="composer">
+<label class="sr-only" for="prompt" data-i18n="promptLabel">Your message</label>
+<textarea id="prompt" rows="2" maxlength="12000" placeholder="Write your message…" data-placeholder="promptPlaceholder"></textarea>
+<div class="composer-toolbar"><button id="settings-toggle" class="button quiet" type="button" aria-expanded="false" aria-controls="settings"><svg><use href="#i-sliders"/></svg><span id="limit-label" data-i18n="settingsLabel">Settings</span></button><button id="send" class="button send" type="submit" disabled aria-label="Send"><svg><use href="#i-send"/></svg></button></div>
+</form>
+<div id="settings" class="settings" hidden>
+<div class="settings-note"><div class="small-row"><span data-i18n="sessionBudget">Used or pending / your cap</span><strong id="budget-value">0 / 0.9 FLOP</strong></div><p class="micro" data-i18n="budgetInfo">This is an app setting, not a FLOP rule. 0.9 FLOP is suggested for the first test; you can adjust this limit below. The counter includes known costs and pending calls since server startup.</p></div>
+<label><span data-i18n="responseLength">Maximum output tokens</span><select id="max-tokens"><option>48</option><option>128</option><option>256</option><option>512</option><option>1024</option></select></label>
+<label><span data-i18n="requestLimit">Your per-request cap (FLOP)</span><input id="request-limit" type="number" min="0" step="any" value="0.9"></label>
+<label><span data-i18n="sessionLimit">Your cap for this chat (FLOP)</span><input id="session-limit" type="number" min="0" step="any" value="0.9"></label>
+<button id="apply-limits" class="button" type="button" data-i18n="applyLimits">Apply</button>
+</div>
+<p class="composer-hint"><span data-i18n="sendHint">Enter to send · Shift + Enter for a new line</span><span id="context-count"></span></p>
+</footer>
+</main>
+<aside class="insights">
+<div class="insights-heading"><h2 data-i18n="usageTitle">Usage</h2><button id="refresh" class="icon-button" aria-label="Refresh"><svg><use href="#i-refresh"/></svg></button></div>
+<div class="quota-card"><div class="overline" data-i18n="apiQuota">API quota remaining</div><div id="quota" class="quota-number">—</div><p class="micro" data-i18n="quotaUnits">Reported by FLOP. This is not your wallet balance.</p><div class="quota-divider"></div><div class="small-row"><span data-i18n="expires">Access expires</span><span id="expires">—</span></div></div>
+<div class="usage-metrics"><div><span data-i18n="settled">Confirmed cost (receipt)</span><strong id="settled">—</strong></div><div><span data-i18n="reserved">Reserved</span><strong id="reserved">—</strong></div><div><span data-i18n="tokens">Tokens used</span><strong id="tokens">—</strong></div></div>
+<p class="micro usage-scope" data-i18n="usageScope">Requests sent by this chat only. “—”: unknown amount.</p>
+<div class="receipt-heading"><h3 data-i18n="activity">Receipts</h3><span id="receipt-count" class="count">0</span></div>
+<div id="receipts" class="receipt-list"><div class="empty-receipts" data-i18n="emptyReceipts">No requests yet.</div></div>
+<div class="identity-card"><div class="overline" data-i18n="connectedIdentity">Connected account</div><code id="wallet-address" data-i18n="notConnected">Aucun compte connecté</code><code id="wallet-did"></code><button id="disconnect" class="text-button" hidden data-i18n="disconnect">Disconnect locally</button></div>
+<a class="guide-link" href="https://github.com/AMCONSEIL/did-to-talisman" target="_blank" rel="noreferrer"><span data-i18n="needWallet">Prepare my DID for Talisman</span><svg><use href="#i-arrow"/></svg></a>
+</aside>
+</div>
+<dialog id="wallet-dialog" class="wallet-dialog">
+<div class="dialog-heading"><div><h2 data-i18n="yourIdentity">Connect Talisman</h2></div><button id="close-wallet" class="icon-button" aria-label="Close"><svg><use href="#i-close"/></svg></button></div>
+<p data-i18n="walletExplanation">Allow your existing account, then review the message before signing.</p>
+<div id="wallet-step-select">
+<button id="load-accounts" class="button primary full"><svg><use href="#i-wallet"/></svg><span data-i18n="allowTalisman">Authorize Talisman</span></button>
+<p class="micro" data-i18n="connectionHelp">Select the account linked to your DID. The chat verifies its Ed25519 signature before accepting the connection.</p>
+<label class="field-label" for="account-select" data-i18n="selectAccount">Account</label><select id="account-select"><option data-i18n="accountsEmpty">No account loaded</option></select>
+<label class="field-label" for="did-input" data-i18n="didOptional">DID to verify (optional)</label><input id="did-input" placeholder="did:key:z6Mk…" autocomplete="off">
+<button id="prepare-challenge" class="button full" disabled data-i18n="reviewChallenge">Review the signing message</button>
+</div>
+<div id="challenge-section" hidden><div class="challenge-account" id="challenge-account"></div><pre id="challenge-message"></pre><p class="micro" data-i18n="challengeInfo">Login signature only. It does not renew or extend the allowance.</p><button id="sign-challenge" class="button primary full" data-i18n="signChallenge">Sign in Talisman</button></div>
+<div id="wallet-error" class="dialog-error" role="alert" hidden></div>
+</dialog>
+<div id="toast" class="toast" role="status" hidden></div>
+</body>
+</html>
