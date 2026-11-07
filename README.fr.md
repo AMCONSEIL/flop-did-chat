@@ -1,10 +1,10 @@
 # FLOP DID Chat
 
-**Version locale de test 0.1.0 · Français / English · Talisman · Ed25519**
+**Version locale de test 0.2.0 · Français / English · Talisman · Ed25519**
 
-Un chat pour le gateway FLOP devnet : connexion signée dans Talisman, catalogue réel de modèles, conversations et suivi des reçus.
+Chat local pour FLOP Devnet. Le gateway est utilisé en priorité, avec une session directe sur un mineur choisi en cas de blocage confirmé.
 
-> **Version publique de test.** La connexion Talisman a été testée avec un DID personnel existant. Notre requête de chat a atteint FLOP mais a reçu HTTP 429, `BrokerOverloadedError: gateway channel pool is full` ; le reçu indique une réservation libérée. Aucune réponse réelle du modèle n’a encore été validée. Les 34 tests automatiques hors ligne passent. Voir les [détails de validation](VALIDATION.md) et l’[incident du gateway](https://github.com/flop-labs/network/issues/31).
+> **Validation Devnet.** Le parcours gateway de la 0.1.0 a rencontré un HTTP 429 avec un reçu libéré. Avec un accès gateway expiré, FLOP DID Chat 0.2.0 a reçu une réponse vérifiée de NurseryPool en direct. La [transaction finalisée](https://explorer.devnet.flop.network/transactions/0x510061602e7524880913177efe61a2cb48171117058c00904db708a0494ee0b6) atteste le paiement de 0,198 FLOP Devnet au mineur. Cette intégration reste expérimentale. Voir [la validation](VALIDATION.md) et [l’incident gateway](https://github.com/flop-labs/network/issues/31).
 >
 > Les retours de la communauté sont bienvenus. Un test utilisateur réel reste nécessaire avant de s’appuyer sur ce client expérimental.
 
@@ -33,6 +33,16 @@ Pour préparer un DID existant dans Talisman : [did-to-talisman](https://github.
 Le DID public seul ne récupère pas une clé perdue. Ne jamais fournir PEM, JSON de wallet, seed ou mot de passe à ce chat.
 
 Linux/macOS : Python 3.11+, créer un environnement virtuel, installer les distributions épinglées du fichier de requirements puis lancer **python flop_chat.py**. L’extension Talisman doit être dans le navigateur. Ces plateformes ne sont pas recettées.
+
+## Repli vers un mineur
+
+Le mode direct nécessite **Node.js 22+**. Dans le dossier du chat, installez ses dépendances épinglées avec `npm ci --ignore-scripts --no-audit --no-fund`, puis relancez le serveur. Le gateway fonctionne aussi avec la seule installation Python.
+
+Le chat tente le gateway si l’accès est disponible. Si l’accès est bloqué avant l’envoi, ou si un refus HTTP 429/503 correspond à un reçu libéré sans paiement ni réponse, le chat propose un mineur pour ce message. Un résultat incertain demande une vérification du reçu. Le client affiche le mineur, le modèle, la réserve de 0,2 FLOP de test et les frais d’ouverture estimés avant la signature Talisman. Le mode direct utilise le solde Devnet du compte. Les frais d’ouverture peuvent rester dus si la réserve est remboursée. Le budget local prend en compte jusqu’à 0,02 FLOP de frais estimés par ouverture.
+
+Le mode direct est limité à Qwen2.5-0.5B et 48 tokens de sortie. Le contexte de la conversation est envoyé au mineur choisi. AntJu et NurseryPool sont proposés. AntJu utilise un tunnel HTTPS temporaire. Si l’opérateur change son URL, renseignez la nouvelle URL HTTPS localement en gardant la même adresse AntJu. Pour ajouter un opérateur qui accepte les sessions directes, créez `.local/direct-miners.json` avec une liste d’objets `{"name":"Nom", "address":"SS58_DU_MINEUR", "endpoint":"https://mineur.example"}`. Vérifiez l’adresse et l’origine HTTPS auprès de l’opérateur avant de l’ajouter. Redémarrez le serveur pour charger cette liste.
+
+Un canal au résultat incertain bloque les envois suivants. **Vérifier les reçus** relit son état finalisé et cherche l’événement de règlement ou de remboursement par lots de 64 blocs. Un canal absent ou un événement introuvable reste à réconcilier. Les actions de récupération qui écrivent sur la chaîne sont distinctes et manuelles.
 
 ## Modèles et limites
 
@@ -80,7 +90,7 @@ Fermer le serveur efface son bearer en mémoire ; le budget local est propre à 
 Tests hors ligne : **python -m unittest discover -s tests -v** et **node --test tests/core.test.mjs**.
 Les fixtures cryptographiques sont publiques (RFC8032), jamais une clé utilisateur. Aucun fonds n’est engagé par ces tests.
 
-**La connexion Talisman réelle est validée ; une réponse réelle réussie et une conversation à plusieurs tours restent à valider avant une version stable.** Les erreurs serveur ne sont pas masquées par un mode de démonstration. Cette version n’a pas encore de signature d’attribution propre : le DID d’auteur est une référence publique, pas une preuve de version signée.
+**Le parcours direct signé via NurseryPool est validé sur le Devnet.** Un essai réussi via le gateway et une conversation à plusieurs tours restent à valider. Cette version n’a pas encore de signature d’attribution propre : le DID d’auteur est une référence publique, pas une preuve de version signée.
 
 Devnet : aucune valeur monétaire, récompense ou poids d’airdrop. Application communautaire indépendante ; aucune affiliation officielle revendiquée.
 

@@ -49,6 +49,11 @@ export function contextFor(conversation, prompt) {
   return messages;
 }
 export function canSend(state, busy, text, model, now = Date.now() / 1000) {
+  if (state?.direct?.available && state.gateway_block && state.account &&
+      model === "qwen/qwen2.5-0.5b-instruct") {
+    return Boolean(!busy && text.trim() && !state.unresolved?.length
+      && Number(state.limits?.session_committed) < Number(state.limits?.session_cap));
+  }
   return Boolean(state?.connected && !busy && text.trim() && model === state.auth?.model
     && !state.unresolved?.length && !(state.cooldown_until > now)
     && Number(state.limits?.session_committed) < Number(state.limits?.session_cap)
@@ -59,6 +64,8 @@ export function safeConversationStore(conversations) {
     id: c.id, title: c.title, account: c.account || null,
     turns: c.turns.map(t => {
       const turn = { id: t.id, prompt: t.prompt, state: t.state };
+      if (typeof t.id === "string") turn.id = t.id;
+      if (t.route === "direct") turn.route = "direct";
       if (typeof t.answer === "string") turn.answer = t.answer;
       if (typeof t.error === "string") turn.error = t.error;
       if (t.usage) turn.usage = { prompt_tokens: t.usage.prompt_tokens,

@@ -14,6 +14,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--ledger", type=Path, default=base / "validation.local" / "fixture-ledger.json")
 args = parser.parse_args()
 chat = Chat(args.ledger, FakeGateway(), clock=lambda: NOW)
+chat.direct.available = False  # Offline fixture must never start the real SDK worker.
 real_handler = make_handler(chat)
 wallet_script = """
 window.injectedWeb3 = { talisman: { enable: async () => ({

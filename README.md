@@ -1,10 +1,10 @@
 # FLOP DID Chat
 
-**Local test version 0.1.0 · English / Français · Talisman · Ed25519**
+**Local test version 0.2.0 · English / Français · Talisman · Ed25519**
 
-A local chat for the FLOP devnet gateway: signed Talisman connection, live model catalog, conversations and receipt-based usage tracking.
+Local chat for FLOP Devnet. The gateway is tried first, with a direct session to a selected miner offered when a confirmed block prevents completion.
 
-> **Public test version.** Talisman connection was tested with an existing personal DID. Our live chat request reached FLOP but returned HTTP 429, `BrokerOverloadedError: gateway channel pool is full`; the receipt reported a released reservation. A successful live model reply has not yet been verified. 34 automated offline tests pass. See [validation details](VALIDATION.md) and the [gateway incident](https://github.com/flop-labs/network/issues/31).
+> **Devnet validation.** The v0.1.0 gateway route returned HTTP 429 and a released receipt. With the gateway allowance expired, FLOP DID Chat v0.2.0 received a verified direct reply from NurseryPool. The [finalized transaction](https://explorer.devnet.flop.network/transactions/0x510061602e7524880913177efe61a2cb48171117058c00904db708a0494ee0b6) records 0.198 Devnet FLOP paid to the miner. This integration remains experimental. See [validation details](VALIDATION.md) and the [gateway incident](https://github.com/flop-labs/network/issues/31).
 >
 > Community feedback is welcome. A real user test is still required before relying on this experimental client.
 
@@ -30,6 +30,16 @@ Each user connects **their own DID and wallet**. The author DID shown in this re
 
 Use the FR / EN button to switch languages. To prepare an existing DID in Talisman, see [did-to-talisman](https://github.com/AMCONSEIL/did-to-talisman). A public DID cannot recover its private key. This app never asks for a seed, wallet file or password.
 
+## Direct miner fallback
+
+Direct mode requires **Node.js 22+**. In the chat directory, install the pinned dependencies with `npm ci --ignore-scripts --no-audit --no-fund`, then restart the server. Gateway mode also works with the Python installation alone.
+
+The chat tries the gateway when access is available. If access is blocked before submission, or an HTTP 429/503 refusal has a released receipt with no payment or reply, the chat offers a miner for that message. An uncertain outcome requires receipt reconciliation. The chat displays the miner, model, 0.2 devnet FLOP escrow and estimated opening fee before Talisman signs. Direct sessions use the wallet's devnet balance. Opening fees can remain payable if escrow is refunded. The local budget accounts for up to 0.02 FLOP in estimated opening fees per channel.
+
+Direct mode is limited to Qwen2.5-0.5B and 48 output tokens. The selected miner receives the conversation context. AntJu and NurseryPool are listed. AntJu uses a temporary HTTPS tunnel. If the operator rotates it, supply the new HTTPS endpoint locally with the same AntJu address. To add an opted-in miner, create `.local/direct-miners.json` with a list of objects shaped like `{"name":"Name", "address":"MINER_SS58", "endpoint":"https://miner.example"}`. Confirm the HTTPS origin and SS58 address with the operator before adding it. Restart the server to load the list.
+
+An uncertain channel blocks further sends. **Check receipts** reads finalized state and scans for settlement or refund events in batches of 64 blocks. A missing channel or event still needs reconciliation. Recovery actions that write to the chain are separate and manual.
+
 ## Spending and model access
 
 Models come from the live gateway catalog and must also be allowed by your credential. Unauthorized models stay disabled. The initial catalog check on November 3, 2026 listed Qwen2.5-0.5B only.
@@ -54,7 +64,7 @@ The server binds to **127.0.0.1** only. Never expose it to the Internet. An opti
 
 Offline tests: **python -m unittest discover -s tests -v** and **node --test tests/core.test.mjs**. Only public RFC8032 cryptographic fixtures are used.
 
-**Real Talisman connection is verified; successful live inference and a multi-turn live conversation remain required before a stable release.** The observed 429 is documented above; offline tests are not evidence of a successful live response. This project version has no signed authorship manifest yet; the author DID is metadata, not a signed release claim.
+**The signed direct path through NurseryPool has been verified on Devnet.** Live gateway completion and multi-turn validation remain open. This project version has no signed authorship manifest yet; the author DID is metadata, not a signed release claim.
 
 Independent community application. Devnet has no monetary value, rewards or airdrop weight.
 

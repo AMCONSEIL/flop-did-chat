@@ -65,3 +65,11 @@ Offline browser fixture verified applying 2.5/10 and retaining those values afte
 ## Public test publication
 
 The user authorized sharing this experimental client despite the observed upstream 429. The English and French README disclose the successful personal wallet authentication and the missing successful live inference. Latest validation: 26 Python tests and 8 JavaScript tests, 34 total. This is a public test, not a stable or audited release. Authorship is personal DID metadata; no signed source manifest is claimed. Runtime journals, evidence, screenshots, environments and credentials are excluded from Git.
+
+## 0.2.0 direct fallback
+
+Offline coverage verifies gateway priority, confirmed release, ambiguous receipts, expired access, local signed login, durable intent before broadcast, duplicate protection and settled cost accounting. A read-only Devnet check produced a live unsigned NurseryPool quote and rediscovered the finalized settlement of the earlier standalone prototype. On November 6, 2026 (UTC−4), the user connected their existing account with Talisman. The gateway returned HTTP 403 \`devnet_enrollment_expired\`. In FLOP DID Chat v0.2.0, the user selected NurseryPool, reviewed the fees, and signed the opening of a direct channel for Qwen2.5-0.5B. The client verified and displayed a reply. Its wording was a generic refusal, so this test verifies the direct transport and settlement. Response quality was outside the test.
+
+The [finalized settlement](https://explorer.devnet.flop.network/transactions/0x510061602e7524880913177efe61a2cb48171117058c00904db708a0494ee0b6) records 0.198 FLOP paid to NurseryPool from a 0.2 FLOP Devnet reserve. Opening fees were quoted separately. The client displayed \`Settled\` and cleared the pending receipt guard.
+
+AntJu is listed separately. A read-only preparation checked the named miner and produced an unsigned fee quote through its temporary public tunnel. The integrated acceptance test above used NurseryPool.

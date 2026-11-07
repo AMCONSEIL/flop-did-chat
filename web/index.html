@@ -57,6 +57,11 @@
 </section>
 <footer class="composer-area">
 <div id="reconcile-note" class="reconcile-note" hidden><span data-i18n="unresolved">A request still needs reconciliation. Check its receipt before sending another.</span><button id="reconcile" class="text-button" data-i18n="checkReceipt">Check receipts</button></div>
+<section id="direct-choice" class="settings" hidden aria-labelledby="direct-title">
+<div class="settings-note"><strong id="direct-title" data-i18n="directTitle">Direct session</strong><p class="micro" data-i18n="directInfo">The gateway is unavailable for this message. The direct session uses your devnet wallet balance.</p></div>
+<label><span data-i18n="directMiner">Miner</span><select id="direct-miner"></select></label>
+<button id="direct-prepare" class="button" type="button" data-i18n="directPrepare">Review costs</button>
+</section>
 <form id="chat-form" class="composer">
 <label class="sr-only" for="prompt" data-i18n="promptLabel">Your message</label>
 <textarea id="prompt" rows="2" maxlength="12000" placeholder="Write your message…" data-placeholder="promptPlaceholder"></textarea>
@@ -95,6 +100,14 @@
 </div>
 <div id="challenge-section" hidden><div class="challenge-account" id="challenge-account"></div><pre id="challenge-message"></pre><p class="micro" data-i18n="challengeInfo">Login signature only. It does not renew or extend the allowance.</p><button id="sign-challenge" class="button primary full" data-i18n="signChallenge">Sign in Talisman</button></div>
 <div id="wallet-error" class="dialog-error" role="alert" hidden></div>
+</dialog>
+<dialog id="direct-dialog" class="wallet-dialog">
+<div class="dialog-heading"><h2 data-i18n="directTitle">Direct session</h2></div>
+<p id="direct-status" role="status" aria-live="polite"></p>
+<pre id="direct-preview" hidden></pre>
+<p id="direct-error" class="dialog-error" role="alert" hidden></p>
+<button id="direct-sign" class="button primary full" type="button" data-i18n="signChallenge" hidden>Sign in Talisman</button>
+<button id="direct-close" class="button full" type="button" data-i18n="close">Close</button>
 </dialog>
 <div id="toast" class="toast" role="status" hidden></div>
 </body>

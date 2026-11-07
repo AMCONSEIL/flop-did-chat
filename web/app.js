@@ -1,6 +1,27 @@
 import { short, rawFlop, amount, metrics, contextFor, canSend, safeConversationStore, substrateCandidates } from "./core.js";
 const $ = id => document.getElementById(id);
 const TEXT = {
+ close: ["Fermer", "Close"],
+ directTitle: ["Session directe", "Direct session"],
+ directInfo: ["Le gateway est bloqué pour ce message. Le direct utilise le solde de votre compte Devnet et transmet le contexte affiché au mineur choisi.", "The gateway is unavailable for this message. Direct uses your devnet wallet balance and shares the displayed conversation context with the selected miner."],
+ directMiner: ["Mineur", "Miner"],
+ directPrepare: ["Voir les coûts", "Review costs"],
+ directChecking: ["Vérification du mineur et calcul des frais…", "Checking the miner and estimating fees…"],
+ directReview: ["Vérifiez ces montants avant de signer l’ouverture.", "Review these amounts before signing the opening transaction."],
+ directSigning: ["En attente de la signature Talisman…", "Waiting for your Talisman signature…"],
+ directSubmitted: ["Ouverture du canal en cours…", "Opening the channel…"],
+ directOpened: ["Canal soumis. En attente du mineur…", "Channel submitted. Waiting for the miner…"],
+ directVerified: ["Réponse vérifiée. Règlement en cours…", "Reply verified. Waiting for settlement…"],
+ directSettled: ["Règlement confirmé sur la chaîne.", "Settlement confirmed on-chain."],
+ directReleased: ["Réserve remboursée sur la chaîne. Les frais d’ouverture restent dus.", "Escrow refunded on-chain. The opening fee still applies."],
+ directReconcile: ["Vérifiez le canal avant un nouvel envoi.", "Check the channel before another send."],
+ directStopped: ["Préparation interrompue avant envoi. Vérifiez la disponibilité du mineur, votre solde et les frais.", "Preparation stopped before submission. Check miner availability, your balance and fees."],
+ directReserve: ["Réserve du canal", "Channel escrow"],
+ directFee: ["Frais d’ouverture estimés", "Estimated opening fee"],
+ directTotal: ["Total estimé", "Estimated total"],
+ directFeeCap: ["Plafond accepté pour l’estimation des frais", "Accepted fee estimate ceiling"],
+ directExplorer: ["Voir le règlement sur l’explorateur", "View settlement in the explorer"],
+ directLocalLogin: ["Compte vérifié. Gateway indisponible. Le chat proposera une session directe à l’envoi.", "Account verified. Gateway unavailable. The chat will offer a direct session when you send."],
 connectionHelp:["Sélectionnez le compte lié à votre DID. Le chat vérifie sa signature Ed25519 avant de valider la connexion.","Select the account linked to your DID. The chat verifies its Ed25519 signature before accepting the connection."],
 settingsLabel:["Réglages","Settings"],
 noCompatibleAccounts:["Aucun compte Substrate compatible partagé. Dans Talisman, autorisez le compte existant lié à votre DID.","No compatible Substrate account shared. In Talisman, allow the existing account linked to your DID."],
@@ -92,6 +113,11 @@ seconds:["s","s"],
 keepKey:["L’accès API reste uniquement en mémoire du serveur local.","API access stays only in the local server’s memory."]
 };
 const ERRORS = {
+ DIRECT_NOT_ALLOWED: ["Ce message n’est pas éligible au direct.", "This message is not eligible for direct mode."],
+ DIRECT_MINER_INVALID: ["Choisissez un mineur distinct du compte client.", "Choose a miner different from the client account."],
+ DIRECT_PREVIEW_EXPIRED: ["L’estimation a expiré. Recommencez la préparation.", "The quote expired. Prepare it again."],
+ DIRECT_UNAVAILABLE: ["Installez les dépendances Node du mode direct.", "Install the Node dependencies for direct mode."],
+ QUOTA_EXHAUSTED: ["Le quota du gateway est épuisé.", "The gateway quota is exhausted."],
 REQUEST_CAP_EXCEEDS_SESSION:["Le plafond par message dépasse votre plafond total. Ajustez les deux valeurs.","Your per-request cap exceeds your total cap. Adjust both values."],
 overloaded:["Capacité FLOP saturée. Aucun nouvel essai automatique.","FLOP is at capacity. No automatic retry."],
 rate_limit_exceeded:["Limite de fréquence FLOP atteinte. Attendez avant un nouvel envoi.","FLOP rate limit reached. Wait before another send."],
@@ -106,6 +132,7 @@ EXPECTED_DID_MISMATCH:["Ce compte ne correspond pas au DID personnel attendu.","
 DID_MISMATCH:["Le DID ne correspond pas à la clé publique du compte choisi.","The DID does not match the selected account’s public key."],
 SIGNATURE_INVALID:["La signature Ed25519 ne correspond pas au message et au compte.","The Ed25519 signature does not match the message and account."],
 CONNECT_REQUIRED:["Connectez ou reconnectez le même compte avec Talisman.","Connect or reconnect the same account with Talisman."],
+devnet_enrollment_expired:["Accès gateway expiré. Le chat peut proposer une session directe.","Gateway access expired. The chat can offer a direct session."],
 devnet_allowance_exhausted:["L’allocation de ce compte est épuisée. Une reconnexion ne la renouvelle pas.","This account’s allowance is exhausted. Reconnecting does not renew it."],
 wallet_unfunded:["Ce compte n’a pas le solde minimal requis par FLOP. Vérifiez son solde sur le réseau de test.","This account lacks FLOP’s required minimum balance. Check its test-network balance."],
 api_key_expired:["L’accès a expiré. Une nouvelle signature ne prolonge pas l’allocation.","Access has expired. A new signature does not extend the allowance."],
@@ -118,6 +145,7 @@ RECEIPTS_INVALID:["Le format des reçus ne correspond pas au contrat attendu. Au
 ED25519_REQUIRED:["Sélectionnez le compte Ed25519 lié à votre DID.","Select the Ed25519 account linked to your DID."]
 };
 let lang = "en", state = null, busy = false, extension = null, challenge = null, accounts = [];
+let directPoll;
 let conversations = [], activeId = null, requestLimit = "0.9", maxTokens = 48;
 const csrf = document.querySelector('meta[name="chat-local"]').content;
 const STORE = "flop-did-chat-history-v1";
@@ -169,7 +197,7 @@ function save() {
 }
 function newConversation() {
  const c = { id: crypto.randomUUID(), title: t("newChat"), account: state?.account?.address || null, turns: [] };
- conversations.push(c); activeId = c.id; save(); renderConversations(); renderMessages(); updateSend();
+ conversations.push(c); activeId = c.id; save(); renderConversations(); renderMessages(); renderDirect(); updateSend();
  return c;
 }
 function currentConversation() { return conversations.find(c => c.id === activeId) || newConversation(); }
@@ -182,7 +210,7 @@ function renderConversations() {
   const title = c.turns.length ? c.title : t("newChat");
   button.append(icon("chat"), el("span", "", title));
   button.title = title;
-  button.addEventListener("click", () => { if (!busy) { activeId = c.id; renderConversations(); renderMessages(); updateSend(); } });
+  button.addEventListener("click", () => { if (!busy) { activeId = c.id; renderConversations(); renderMessages(); renderDirect(); updateSend(); } });
   list.append(button);
  }
 }
@@ -204,6 +232,7 @@ function appendMessage(role, text, turn, error = false) {
  if (role !== "user") {
   const meta = el("div", "message-meta");
   if (turn?.usage?.total_tokens !== undefined) meta.append(el("span", "", amount(turn.usage.total_tokens, lang) + " tokens"));
+  if (turn?.route === "direct") meta.append(el("span", "", t("directTitle")));
   if (turn?.finish === "length") meta.append(el("span", "", t("shortReply")));
   if (turn?.id) meta.append(el("code", "", short(turn.id, 10, 5)));
   const copy = el("button", "copy-button"); copy.append(icon("copy"), el("span", "", t("copy")));
@@ -222,7 +251,7 @@ function renderMessages() {
   else if (turn.error) appendMessage("assistant", turn.error, turn, true);
   else if (turn.state === "pending" && !busy) appendMessage("assistant", t("reconcileOnly"), turn, true);
  }
- $("working").hidden = !busy;
+ $("working").hidden = !busy || $("direct-dialog").open;
  const context = c ? contextFor(c, "").length - 1 : 0;
  $("context-count").textContent = context ? context + " " + t("context") : "";
 }
@@ -245,10 +274,19 @@ function renderReceipts() {
   const settlement = row.settled_spend_raw !== null && row.settled_spend_raw !== undefined ? rawFlop(String(row.settled_spend_raw)) : row.settled_spend;
   const summary = el("div", "receipt-summary", t("reservedLabel") + " : " + amount(row.reserved_spend, lang)
    + " · " + t("settledLabel") + " : " + (settlement === null || settlement === undefined ? t("unknown") : amount(settlement, lang)) + " FLOP");
+  if (row.route === "direct") {
+   summary.append(el("div", "", t("directTitle") + (row.chain_state ? " · " + row.chain_state : "")));
+   if (/^0x[0-9a-f]{64}$/.test(row.terminal_event)) {
+    const link = el("a", "", t("directExplorer"));
+    link.href = "https://explorer.devnet.flop.network/transactions/" + row.terminal_event;
+    link.target = "_blank"; link.rel = "noreferrer";
+    summary.append(link);
+   }
+  }
   if (row.response_status) summary.append(el("div", "", "HTTP " + row.response_status));
   card.append(summary);
   const details = el("details"), title = el("summary", "", t("details"));
-  const safe = Object.fromEntries(["request_id", "model", "state", "response_status", "reserved_spend", "settled_spend", "settled_spend_raw", "terminal_event", "channel_id", "receipt_error"].filter(k => k in row).map(k => [k, row[k]]));
+  const safe = Object.fromEntries(["request_id", "model", "state", "response_status", "reserved_spend", "settled_spend", "settled_spend_raw", "terminal_event", "channel_id", "receipt_error", "miner", "opening_tx", "opening_fee_estimate_raw", "miner_paid_raw", "burned_raw"].filter(k => k in row).map(k => [k, row[k]]));
   details.append(title, el("pre", "", JSON.stringify(safe, null, 2)), el("p", "micro", t("ledgerNotice")));
   card.append(details); $("receipts").append(card);
  }
@@ -260,7 +298,7 @@ function renderState(next) {
  $("expires").textContent = state.auth?.expires_at ? new Date(state.auth.expires_at).toLocaleString(lang, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "—";
  $("wallet-address").textContent = state.account?.address || t("notConnected");
  $("wallet-did").textContent = state.account?.did || "";
- $("connect-label").textContent = state.connected ? short(state.account.address, 6, 5) : t("connect");
+ $("connect-label").textContent = state.account ? short(state.account.address, 6, 5) : t("connect");
  $("disconnect").hidden = !state.account;
  $("did-input").value = state.expected_did || $("did-input").value;
  const selected = $("model-select").value, select = $("model-select"); select.replaceChildren();
@@ -271,8 +309,13 @@ function renderState(next) {
   if (option.disabled) option.textContent += " · " + t("notAuthorized");
   select.append(option);
  }
- if (!state.models.length) select.append(el("option", "", state.models_checked_at ? t("emptyCatalog") : t("noCatalog")));
- else select.value = state.auth?.model || (state.models.some(m => m.id === selected) ? selected : state.models[0].id);
+ if (state.direct?.available && state.gateway_block && !state.models.some(m => m.id === "qwen/qwen2.5-0.5b-instruct")) {
+  const option = el("option", "", "Qwen2.5 0.5B Instruct (devnet)");
+  option.value = "qwen/qwen2.5-0.5b-instruct";
+  select.append(option);
+ }
+ if (!select.options.length) select.append(el("option", "", state.models_checked_at ? t("emptyCatalog") : t("noCatalog")));
+ else select.value = state.auth?.model || ([...select.options].some(o => o.value === selected) ? selected : select.options[0].value);
  $("model-access").textContent = state.auth ? t("oneModel") : "";
  const numbers = metrics(state.requests);
  $("settled").textContent = amount(numbers.settled, lang) + (numbers.unknownSettled ? " + ?" : "") + (numbers.settled !== null ? " FLOP" : "");
@@ -284,7 +327,8 @@ function renderState(next) {
  $("request-limit").value = requestLimit;
  $("session-limit").value = state.limits.session_cap;
  $("reconcile-note").hidden = !state.unresolved.length;
- renderReceipts(); renderConversations(); updateSend();
+ $("reconcile").disabled = directActive(state.direct?.job?.phase);
+ renderReceipts(); renderConversations(); renderDirect(); updateSend();
 }
 function translate() {
  document.documentElement.lang = lang;
@@ -305,8 +349,8 @@ function updateSend() {
  $("send").disabled = !canSend(state, busy, $("prompt").value, $("model-select").value);
  $("new-chat").disabled = busy;
  $("connect").disabled = busy;
- $("model-select").disabled = busy || !state?.models?.length;
- $("working").hidden = !busy;
+ $("model-select").disabled = busy || !$("model-select").options.length;
+ $("working").hidden = !busy || $("direct-dialog").open;
  const remaining = Math.ceil((state?.cooldown_until || 0) - Date.now() / 1000);
  if (remaining > 0 && !busy) {
   banner(t("cooldown") + " " + remaining + " " + t("seconds") + ". " + (state.last_error ? formatError(state.last_error) : ""), "error");
@@ -315,7 +359,11 @@ function updateSend() {
 }
 async function refreshState(showToast = true) {
  $("refresh").disabled = true;
- try { renderState(await api("refresh")); if (showToast) toast(t("refreshDone")); }
+ try {
+  const row = state?.requests.find(r => r.route === "direct" && state.unresolved.includes(r.request_id));
+  renderState(row ? await api("direct/reconcile", { id: row.request_id }) : await api("refresh"));
+  if (showToast) toast(t("refreshDone"));
+ }
  catch (error) { banner(formatError(error), "error"); }
  finally { $("refresh").disabled = false; }
 }
@@ -364,7 +412,7 @@ $("sign-challenge").addEventListener("click", async () => {
   if (c.account && c.account !== state.account.address) newConversation();
   else { c.account = state.account.address; save(); }
   $("wallet-dialog").close();
-  banner(state.connected ? t("connected") : t("readinessError"), state.connected ? "success" : "");
+  banner(state.connected ? t("connected") : state.gateway_block ? t("directLocalLogin") : t("readinessError"), state.connected ? "success" : "");
   renderMessages();
  } catch (error) { $("wallet-error").textContent = error?.message || formatError(error); $("wallet-error").hidden = false;
   try { renderState(await (await fetch("/api/state")).json()); } catch {}
@@ -395,7 +443,7 @@ $("chat-form").addEventListener("submit", async event => {
   banner(turn.error, "error");
   try { renderState(await (await fetch("/api/state")).json()); } catch {}
  } finally {
-  busy = false; save(); renderMessages(); updateSend();
+  busy = false; save(); renderMessages(); renderDirect(); updateSend();
   document.querySelector(".chat-area").scrollTop = document.querySelector(".chat-area").scrollHeight;
  }
 });
@@ -427,6 +475,117 @@ $("apply-limits").addEventListener("click", async () => {
 $("refresh").addEventListener("click", () => refreshState());
 $("reconcile").addEventListener("click", () => refreshState());
 $("disconnect").addEventListener("click", async () => { try { renderState(await api("disconnect")); banner(""); } catch (error) { banner(formatError(error), "error"); } });
+function renderDirect() {
+ const direct = state?.direct;
+ const conversation = conversations.find(c => c.id === activeId);
+ const turn = conversation?.turns.at(-1);
+ $("direct-choice").hidden = !direct?.request_id || direct.request_id !== turn?.id || turn?.state !== "failed";
+ const select = $("direct-miner"), previous = select.value;
+ select.replaceChildren(el("option", "", "—"));
+ select.options[0].value = "";
+ for (const miner of direct?.miners || []) {
+  const option = el("option", "", miner.name + " · " + short(miner.address));
+  option.value = miner.address;
+  option.disabled = miner.address === state.account?.address;
+  select.append(option);
+ }
+ if ([...select.options].some(o => o.value === previous)) select.value = previous;
+ $("direct-prepare").disabled = !select.value || busy;
+ const job = direct?.job;
+ if (!job) return;
+ const phases = { checking: "directChecking", review: "directReview", signing: "directSigning",
+  submitted: "directSubmitted", opened: "directOpened", verified: "directVerified",
+  settled: "directSettled", released: "directReleased", reconcile: "directReconcile", stopped: "directStopped" };
+ $("direct-status").textContent = t(phases[job.phase] || "directStopped");
+ $("direct-sign").hidden = job.phase !== "review";
+ $("direct-preview").hidden = !job.preview;
+ if (job.preview) {
+  const quote = job.preview;
+  const display = value => rawFlop(value) + " FLOP";
+  $("direct-preview").textContent = [
+   job.miner.name + " · " + job.miner.address, job.miner.endpoint, quote.model + " · " + quote.precision,
+   t("responseLength") + "  " + quote.max_tokens,
+   t("directReserve") + "  " + display(quote.escrow), t("directFee") + "  " + display(quote.fee),
+   t("directTotal") + "  " + display(quote.total), t("directFeeCap") + "  " + display(quote.fee_cap),
+   quote.channel_id,
+  ].join("\n");
+ }
+ const source = conversations.find(c => c.account === state.account?.address && c.turns.some(t => t.id === job.source_id));
+ const matched = source?.turns.find(t => t.id === job.source_id);
+ if (matched && typeof job.reply === "string" && matched.answer !== job.reply) {
+  Object.assign(matched, { answer: job.reply, route: "direct", state: "answered" });
+  delete matched.error;
+  save();
+  renderMessages();
+ }
+}
+
+const directActive = phase => ["checking", "review", "signing", "submitted", "opened", "verified"].includes(phase);
+function syncDirectPolling() {
+ clearInterval(directPoll);
+ busy = directActive(state?.direct?.job?.phase);
+ if (busy) directPoll = setInterval(async () => {
+  try {
+   const next = await (await fetch("/api/state", { signal: AbortSignal.timeout(5000) })).json();
+   if (next.direct?.job?.id !== state?.direct?.job?.id) return;
+   if (next.direct.job.phase === "review" && state.direct.job.phase === "signing") return;
+   renderState(next);
+   if (!directActive(next.direct.job.phase)) syncDirectPolling();
+  } catch { /* Wait for the server to report a durable outcome. */ }
+ }, 1250);
+ updateSend();
+}
+$("direct-miner").addEventListener("change", () => $("direct-prepare").disabled = !$("direct-miner").value || busy);
+$("direct-prepare").addEventListener("click", async () => {
+ if (busy || !state.direct.request_id || !$("direct-miner").value) return;
+ busy = true;
+ $("direct-error").hidden = true;
+ try {
+  renderState(await api("direct/prepare", { request_id: state.direct.request_id, miner: $("direct-miner").value }));
+  $("direct-dialog").showModal();
+  syncDirectPolling();
+ } catch (error) {
+  busy = false; renderDirect(); updateSend(); banner(formatError(error), "error");
+ }
+});
+$("direct-sign").addEventListener("click", async () => {
+ const job = state.direct.job;
+ if (job?.phase !== "review" || $("direct-sign").disabled) return;
+ $("direct-sign").disabled = true;
+ $("direct-error").hidden = true;
+ let handedOff = false;
+ try {
+  const wallet = extension || await window.injectedWeb3?.talisman?.enable("FLOP DID Chat");
+  if (!wallet?.signer?.signPayload) throw { detail: t("noTalisman") };
+  const { payload } = await api("direct/sign", { id: job.id });
+  const { signature } = await wallet.signer.signPayload(payload);
+  handedOff = true;
+  renderState(await api("direct/submit", { id: job.id, signature }));
+ } catch (error) {
+  $("direct-error").textContent = error.message || formatError(error);
+  $("direct-error").hidden = false;
+  try {
+   renderState(!handedOff ? await api("direct/cancel", { id: job.id })
+     : await (await fetch("/api/state", { signal: AbortSignal.timeout(5000) })).json());
+  } catch {}
+ } finally {
+  $("direct-sign").disabled = false;
+  syncDirectPolling();
+ }
+});
+async function closeDirect() {
+ const job = state?.direct?.job;
+ if (["checking", "review", "signing"].includes(job?.phase)) {
+  try { renderState(await api("direct/cancel", { id: job.id })); }
+  catch (error) { banner(formatError(error), "error"); }
+ }
+ $("direct-dialog").close();
+ syncDirectPolling();
+ renderDirect();
+}
+$("direct-close").addEventListener("click", closeDirect);
+$("direct-dialog").addEventListener("cancel", event => { event.preventDefault(); void closeDirect(); });
+
 async function boot() {
  translate();
  try {
@@ -434,6 +593,10 @@ async function boot() {
   if (!activeId) activeId = conversations.at(-1)?.id || null;
   if (!activeId) newConversation();
   renderMessages(); renderConversations();
+  if (directActive(state?.direct?.job?.phase)) {
+   $("direct-dialog").showModal();
+   syncDirectPolling();
+  }
   try { renderState(await api("models")); } catch (error) { banner(formatError(error), "error"); }
  } catch { banner(lang === "fr" ? "Serveur local indisponible. Relancez l’application." : "Local server unavailable. Restart the application.", "error"); }
 }

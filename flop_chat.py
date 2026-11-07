@@ -21,7 +21,9 @@ import urllib.request
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
-VERSION = "0.1.0"
+from direct_chat import Direct, MODEL as DIRECT_MODEL, RAW
+
+VERSION = "0.2.0"
 AUTHOR_DID = "did:key:z6Mkt3DNtpGBNh1KHYwLQEk6QtCcJ7vVaRPze1SU7MyhFMVD"
 API = "https://api.flop.network/v1"
 GENESIS = "0x99c172c095340ace980631f9123544c6bebd4839f3437e463533422d8be2d631"
@@ -31,6 +33,7 @@ MAX_BODY = 100_000
 MAX_REPLY = 4_000_000
 DEFAULT_REQUEST_CAP = Decimal("0.9")
 TOKEN_CAP = 1024
+GATEWAY_EXPIRY_CODES = {"api_key_expired", "devnet_enrollment_expired"}
 TERMINAL = {"released", "settled"}
 
 
@@ -237,6 +240,9 @@ class Chat:
         self.last_error = None
         self.baseline_ids = set(self.ledger.rows)
         self.bootstrap_token = secrets.token_urlsafe(32)
+        self.gateway_block = None
+        self.direct_candidate = None
+        self.direct = Direct(self, ChatError, parse_identity)
 
     def remote(self, path, payload=None, authenticated=False, request_id=None):
         if authenticated and not self.key:
@@ -269,18 +275,32 @@ class Chat:
         if self.expected_did and account["did"] != self.expected_did:
             raise ChatError("EXPECTED_DID_MISMATCH")
         with self.lock:
-            if any(r.get("local_state") == "sending" for r in self.ledger.rows.values()):
+            if self.direct.active() or any(r.get("local_state") == "sending" and r.get("route") != "direct"
+                                           for r in self.ledger.rows.values()):
                 raise ChatError("REQUEST_PENDING", 409)
             if self.account and self.account["address"] != account["address"] and self.unresolved():
                 raise ChatError("RECONCILE_REQUIRED", 409)
             old = self.challenge
             if old and old["account"] == account and not old["submitted"] and old["expires_at"] > self.clock() * 1000:
                 return self.public_challenge(old)
-            if self.models_at < self.clock() - 120:
-                self.catalog()
-            if not self.models:
-                raise ChatError("NO_MODELS_AVAILABLE", 503)
-            challenge = self.remote("/enroll/wallet/challenge?" + urllib.parse.urlencode({"address": account["address"]}))
+            try:
+                if self.models_at < self.clock() - 120:
+                    self.catalog()
+                if not self.models:
+                    raise ChatError("NO_MODELS_AVAILABLE", 503)
+                challenge = self.remote("/enroll/wallet/challenge?" + urllib.parse.urlencode({"address": account["address"]}))
+            except ChatError as error:
+                if not self.direct.available or (error.status != 503 and error.code not in
+                        GATEWAY_EXPIRY_CODES | {"GATEWAY_UNREACHABLE"}):
+                    raise
+                expiry = int((self.clock() + 120) * 1000)
+                message = "\n".join(["FLOP DID Chat local connection — no blockchain transaction",
+                                      "Genesis: " + GENESIS, "DID: " + account["did"],
+                                      "Address: " + account["address"], "Nonce: " + secrets.token_hex(32),
+                                      "Expires At: " + str(expiry)])
+                self.challenge = {"account": account, "message": message, "expires_at": expiry,
+                                  "submitted": False, "local_reason": error.code}
+                return self.public_challenge(self.challenge)
             message, nonce, expiry = challenge.get("message"), challenge.get("nonce"), challenge.get("expires_at")
             if (not isinstance(message, str) or len(message) > 3500
                     or not isinstance(nonce, str) or not re.fullmatch(r"[0-9a-f]{64}", nonce)
@@ -304,17 +324,38 @@ class Chat:
                 raise ChatError("CHALLENGE_EXPIRED", 409)
             verify_signature(c["account"]["public_key"], c["message"], body.get("signature"))
             c["submitted"] = True
-            result = self.remote("/enroll/wallet", {
-                "address": c["account"]["address"], "message": c["message"],
-                "signature": body["signature"]})
+            if c.get("local_reason"):
+                return self.local_connection(c, c["local_reason"])
+            try:
+                result = self.remote("/enroll/wallet", {
+                    "address": c["account"]["address"], "message": c["message"],
+                    "signature": body["signature"]})
+            except ChatError as error:
+                if not self.direct.available or (error.code not in GATEWAY_EXPIRY_CODES | {"devnet_allowance_exhausted",
+                        "wallet_unfunded", "GATEWAY_UNREACHABLE"} and error.status != 503):
+                    raise
+                return self.local_connection(c, error.code)
+            if (self.direct.available and isinstance(result.get("expires_at"), int)
+                    and result["expires_at"] <= self.clock() * 1000):
+                # Keep an issued credential in memory for receipt reconciliation only.
+                self.local_connection(c, "api_key_expired")
+                if isinstance(result.get("key"), str) and isinstance(result.get("model"), str):
+                    self.key = result["key"] or None
+                    self.auth = {k: result.get(k) for k in ("expires_at", "remaining_quota", "model")}
+                    self.auth.update(verified=False, reconciled=False)
+                return self.snapshot()
             if (not isinstance(result.get("key"), str) or not result["key"]
                     or not isinstance(result.get("expires_at"), int)
                     or result["expires_at"] <= self.clock() * 1000
                     or not isinstance(result.get("model"), str)):
                 raise ChatError("ENROLLMENT_INVALID", 502)
             # Store only in memory even if catalogue validation/introspection fails.
+            if self.account != c["account"]:
+                self.external = []
             self.key = result["key"]
             self.account = c["account"]
+            self.gateway_block = None
+            self.direct_candidate = None
             self.cooldown_until = max([r.get("retry_not_before", 0) for r in self.ledger.for_address(self.account["address"])] + [0])
             self.auth = {k: result.get(k) for k in ["model", "remaining_quota", "expires_at"]}
             self.auth["verified"] = False
@@ -325,6 +366,51 @@ class Chat:
             self.auth["verified"] = True
             self.refresh()
             return self.snapshot()
+
+    def local_connection(self, challenge, reason):
+        if self.account != challenge["account"]:
+            self.external = []
+            self.key = self.auth = None
+        self.account = challenge["account"]
+        if self.auth:
+            self.auth["verified"] = False
+        self.gateway_block = reason
+        self.direct_candidate = None
+        return self.snapshot()
+
+    def direct_gateway_block(self):
+        if self.gateway_block:
+            return self.gateway_block
+        if self.auth and self.auth["expires_at"] <= self.clock() * 1000:
+            return "api_key_expired"
+        if self.connected() and decimal(self.auth["remaining_quota"]) == 0:
+            return "QUOTA_EXHAUSTED"
+        return None
+
+    def direct_allowed(self, source):
+        if (not self.account or source["address"] != self.account["address"] or self.unresolved()
+                or self.direct.active() or "direct-" + source["id"][5:] in self.ledger.rows
+                or source["model"] != DIRECT_MODEL):
+            return False
+        if self.reconcile_request and not any(r["request_id"] == self.reconcile_request and r.get("state") in TERMINAL
+                for r in self.ledger.for_address(self.account["address"]) + self.external):
+            return False
+        row = self.ledger.rows.get(source["id"])
+        if row:
+            return (row["address"] == source["address"] and row["state"] == "released"
+                    and not row["response_received"] and row["response_status"] == source["status"]
+                    and row["response_status"] in {429, 503}
+                    and row.get("settled_spend_raw") in (None, "0", 0) and row.get("settled_spend") in (None, 0))
+        return source["status"] == "catalog" or bool(self.direct_gateway_block())
+
+    @staticmethod
+    def decimal_cost(raw):
+        return Decimal(raw) / RAW
+
+    def fallback(self, request_id, payload, cap, status=None):
+        self.direct_candidate = {"id": request_id, "address": self.account["address"], "model": payload["model"],
+                                 "messages": payload["messages"], "tokens": payload["max_tokens"],
+                                 "cap": cap, "status": status}
 
     def connected(self):
         return bool(self.key and self.auth and self.auth.get("verified") and self.auth.get("reconciled")
@@ -341,6 +427,10 @@ class Chat:
             return total
         for row in self.ledger.for_address(self.account["address"]):
             if row["request_id"] in self.baseline_ids:
+                continue
+            if row.get("route") == "direct" and row.get("state") in TERMINAL:
+                if row.get("local_state") != "not_submitted":
+                    total += self.decimal_cost(int(row["opening_fee_cap_raw"]) + int(row.get("settled_spend_raw") or "0"))
                 continue
             if row.get("state") == "released":
                 continue
@@ -365,7 +455,10 @@ class Chat:
                                "session_committed": str(self.session_commitment())},
                     "unresolved": [r["request_id"] for r in self.unresolved()],
                     "cooldown_until": self.cooldown_until,
-                    "last_error": self.last_error}
+                    "last_error": self.last_error, "gateway_block": self.direct_gateway_block(),
+                    "direct": {**self.direct.snapshot(),
+                               "request_id": self.direct_candidate["id"] if self.direct.available and
+                               self.direct_candidate and self.direct_allowed(self.direct_candidate) else None}}
 
     def refresh(self):
         with self.lock:
@@ -386,7 +479,7 @@ class Chat:
                 raise ChatError("RECEIPTS_INVALID", 502)
             clean = [self.sanitize_receipt(r) for r in records]
             self.external = [r for r in clean if r["request_id"] not in self.ledger.rows]
-            ids = {r["request_id"] for r in self.ledger.for_address(self.account["address"])}
+            ids = {r["request_id"] for r in self.ledger.for_address(self.account["address"]) if r.get("route") != "direct"}
             if self.reconcile_request:
                 ids.add(self.reconcile_request)
             observed = {r["request_id"]: r for r in clean}
@@ -436,7 +529,7 @@ class Chat:
     def apply_receipt(self, receipt):
         request_id = receipt["request_id"]
         row = self.ledger.rows.get(request_id)
-        if row and self.account and row["address"] == self.account["address"]:
+        if row and row.get("route") != "direct" and self.account and row["address"] == self.account["address"]:
             row.update(receipt)
             row.pop("receipt_error", None)
             row["local_state"] = "complete" if row.get("response_received") else "reconciled"
@@ -444,8 +537,10 @@ class Chat:
 
     def chat(self, body):
         with self.lock:
-            if not self.connected():
+            if not self.account or (not self.connected() and not (self.direct.available and self.direct_gateway_block())):
                 raise ChatError("CONNECT_REQUIRED", 401)
+            if self.direct.active():
+                raise ChatError("REQUEST_PENDING", 409)
             request_id = body.get("request_id")
             if not isinstance(request_id, str) or not re.fullmatch(r"chat-[0-9a-f]{32}", request_id):
                 raise ChatError("REQUEST_ID_INVALID")
@@ -472,14 +567,29 @@ class Chat:
                 return {"request": self.public_row(prior), "state": self.snapshot(), "duplicate": True}
             if self.unresolved():
                 raise ChatError("RECONCILE_REQUIRED", 409)
+            if "direct-" + request_id[5:] in self.ledger.rows:
+                raise ChatError("REQUEST_ID_CONFLICT", 409)
+            block = self.direct_gateway_block()
+            if block and self.direct.available and model == DIRECT_MODEL:
+                self.fallback(request_id, payload, cap)
+                return {"error": ChatError(block, 403).public(), "state": self.snapshot()}
+            if not self.connected():
+                raise ChatError("CONNECT_REQUIRED", 401)
             if self.cooldown_until > self.clock():
                 raise ChatError("COOLDOWN", 429, retry_after=math.ceil(self.cooldown_until - self.clock()))
             if self.auth["model"] != model or model not in {m["id"] for m in self.models}:
                 raise ChatError("MODEL_NOT_AUTHORIZED", 403)
             if self.models_at < self.clock() - 120:
-                self.catalog()
-                if model not in {m["id"] for m in self.models}:
-                    raise ChatError("MODEL_NOT_AVAILABLE", 503)
+                try:
+                    self.catalog()
+                    if model not in {m["id"] for m in self.models}:
+                        raise ChatError("MODEL_NOT_AVAILABLE", 503)
+                except ChatError as error:
+                    if (not self.direct.available or model != DIRECT_MODEL
+                            or (error.status != 503 and error.code != "GATEWAY_UNREACHABLE")):
+                        raise
+                    self.fallback(request_id, payload, cap, "catalog")
+                    return {"error": error.public(), "state": self.snapshot()}
             advertised = next(m for m in self.models if m["id"] == model)
             live_cap = advertised.get("max_completion_tokens")
             if "max_tokens" not in advertised.get("supported_parameters", []) or (isinstance(live_cap, int) and tokens > live_cap):
@@ -494,9 +604,10 @@ class Chat:
                    "state": "unknown", "local_state": "sending", "response_received": False,
                    "reserved_spend": None, "settled_spend": None, "settled_spend_raw": None,
                    "channel_id": None, "terminal_event": None}
+            self.direct_candidate = None
             self.ledger.rows[request_id] = row
             self.ledger.save()  # Persist original identity BEFORE submitting.
-        completion, error = None, None
+        completion, error, status = None, None, None
         try:
             result = self.remote("/chat/completions", payload, authenticated=True, request_id=request_id)
             choices = result.get("choices", [])
@@ -510,7 +621,7 @@ class Chat:
                 row.update(response_received=True, local_state="received", usage=usage)
                 self.ledger.save()
         except ChatError as caught:
-            error = caught.public()
+            error, status = caught.public(), caught.status
             with self.lock:
                 row.update(error=error, local_state="needs_receipt")
                 # Capacity and rate-limit errors never trigger retry.
@@ -534,6 +645,8 @@ class Chat:
                 self.refresh()
             except ChatError:
                 pass
+            if status in {429, 503} and completion is None:
+                self.fallback(request_id, payload, cap, status)
             return {"request": self.public_row(row), "completion": completion,
                     "error": error, "state": self.snapshot()}
 
@@ -551,15 +664,18 @@ class Chat:
                 raise ChatError("REQUEST_CAP_EXCEEDS_SESSION")
             if self.unresolved():
                 raise ChatError("RECONCILE_REQUIRED", 409)
+            if self.direct.active():
+                raise ChatError("REQUEST_PENDING", 409)
             # Validate both values before changing either. Settings do not spend.
             self.session_cap, self.request_cap = cap, request_cap
             return self.snapshot()
 
     def disconnect(self):
         with self.lock:
-            if self.unresolved():
+            if self.unresolved() or self.direct.active():
                 raise ChatError("RECONCILE_REQUIRED", 409)
             self.key = self.auth = self.account = self.challenge = None
+            self.gateway_block = self.direct_candidate = None
             self.external = []
         return self.snapshot()
 
@@ -623,7 +739,12 @@ def make_handler(chat):
                     raise ChatError("BODY_INVALID")
                 routes = {"/api/limits": lambda: chat.update_limits(body), "/api/models": lambda: chat.catalog(), "/api/challenge": lambda: chat.new_challenge(body),
                           "/api/enroll": lambda: chat.enroll(body), "/api/refresh": lambda: chat.refresh(),
-                          "/api/chat": lambda: chat.chat(body), "/api/disconnect": lambda: chat.disconnect()}
+                          "/api/chat": lambda: chat.chat(body), "/api/disconnect": lambda: chat.disconnect(),
+                          "/api/direct/prepare": lambda: chat.direct.prepare(body),
+                          "/api/direct/sign": lambda: chat.direct.sign(body),
+                          "/api/direct/submit": lambda: chat.direct.submit(body),
+                          "/api/direct/cancel": lambda: chat.direct.cancel(body),
+                          "/api/direct/reconcile": lambda: chat.direct.reconcile(body)}
                 if self.path not in routes:
                     raise ChatError("NOT_FOUND", 404)
                 self.send(200, routes[self.path]())
