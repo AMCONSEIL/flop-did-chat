@@ -1,5 +1,6 @@
 // One invocation, one named miner and one Talisman-funded devnet channel.
 import { createInterface } from "node:readline";
+import { DEVNET_GENESIS, checkDirectNetwork, directDiagnostic } from "./direct_runtime.mjs";
 import { ApiPromise, WsProvider } from "@polkadot/api";
 import { decodeAddress, ed25519Verify, blake2AsU8a } from "@polkadot/util-crypto";
 import { u8aEq, u8aToHex, hexToU8a } from "@polkadot/util";
@@ -10,7 +11,7 @@ import { ChannelSession } from "./node_modules/@flop-labs/sdk/dist/compute-chann
 import { channelIdV1 } from "./node_modules/@flop-labs/sdk/dist/compute-channel/transcript.js";
 import { decodeTextTurnOutput } from "./node_modules/@flop-labs/sdk/dist/compute-channel/transport-http.js";
 
-const genesis = "0x99c172c095340ace980631f9123544c6bebd4839f3437e463533422d8be2d631";
+const genesis = DEVNET_GENESIS;
 const amount = value => BigInt(value.toString());
 const send = event => process.stdout.write(JSON.stringify(event, (_, v) => typeof v === "bigint" ? String(v) : v) + "\n");
 const sameAccount = (a, b) => u8aEq(decodeAddress(a), decodeAddress(b));
@@ -166,13 +167,12 @@ try {
   const job = await read();
   await provider.connect();
   const api = await ApiPromise.create({ provider, throwOnConnect: true, throwOnUnknown: true, noInitWarn: true });
-  if (api.genesisHash.toHex() !== genesis || api.runtimeVersion.specVersion.toString() !== "1014003" ||
-      api.registry.chainDecimals[0] !== 18) throw Error("Unexpected devnet genesis, runtime or denomination");
+  checkDirectNetwork(api);
   if (job.action === "reconcile") await reconcile(api, job);
   else await session(api, job);
-} catch {
-  // Never print raw RPC errors, wallet signatures, credentials or prompts.
-  send({ phase: broadcastAuthorized ? "error" : "not_submitted" });
+} catch (error) {
+  // Only allowlisted diagnostics; never raw RPC errors or private inputs.
+  send({ phase: broadcastAuthorized ? "error" : "not_submitted", ...directDiagnostic(error) });
 } finally {
   await provider.disconnect();
   clearTimeout(deadline);

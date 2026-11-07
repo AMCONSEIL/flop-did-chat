@@ -49,3 +49,7 @@ Use the same Talisman identity. A proven gateway refusal with a released receipt
 ## Historical gateway acceptance status
 
 Personal Talisman login verified; first real manually sent chat prompt failed with upstream 429 overloaded/channel pool full. Receipt refreshed: released reservation 0.306 FLOP, settled amount null, no unresolved request. Exact request ID and public receipt are in ignored validation.local/personal-live-chat-receipt.public.json. No automatic retry. Public experimental publication is now authorized, with the observed failure disclosed. Do not reuse the earlier one-shot test lock or the professional miner account to retry.
+
+## Runtime compatibility diagnostic — 7 November 2026
+
+Direct preparation now uses the pinned SDK explicit supported-spec list instead of a single hardcoded 1014003. Live Devnet reports 1014014, absent from published SDK 0.4.0: direct operations remain blocked before miner contact or signature. A compatible official release is required; do not patch the SDK list to bypass this gate. Only allowlisted runtime/network diagnostics reach the browser, never raw RPC errors. Existing budgets, ledger, receipts and signature guards are preserved.

@@ -16,6 +16,8 @@ const TEXT = {
  directReleased: ["Réserve remboursée sur la chaîne. Les frais d’ouverture restent dus.", "Escrow refunded on-chain. The opening fee still applies."],
  directReconcile: ["Vérifiez le canal avant un nouvel envoi.", "Check the channel before another send."],
  directStopped: ["Préparation interrompue avant envoi. Vérifiez la disponibilité du mineur, votre solde et les frais.", "Preparation stopped before submission. Check miner availability, your balance and fees."],
+ directRuntimeUnsupported: ["Préparation arrêtée avant envoi : la version réseau {runtime} n’est pas prise en charge par le SDK installé. Une version compatible du SDK est nécessaire. Aucune transaction n’a été soumise.", "Preparation stopped before submission: network runtime {runtime} is unsupported by the installed SDK. A compatible SDK release is required. No transaction was submitted."],
+ directNetworkMismatch: ["Préparation arrêtée avant envoi : le réseau ou l’unité FLOP ne correspond pas au Devnet attendu. Aucune transaction n’a été soumise.", "Preparation stopped before submission: unexpected network or FLOP denomination. No transaction was submitted."],
  directReserve: ["Réserve du canal", "Channel escrow"],
  directFee: ["Frais d’ouverture estimés", "Estimated opening fee"],
  directTotal: ["Total estimé", "Estimated total"],
@@ -496,7 +498,10 @@ function renderDirect() {
  const phases = { checking: "directChecking", review: "directReview", signing: "directSigning",
   submitted: "directSubmitted", opened: "directOpened", verified: "directVerified",
   settled: "directSettled", released: "directReleased", reconcile: "directReconcile", stopped: "directStopped" };
- $("direct-status").textContent = t(phases[job.phase] || "directStopped");
+ const reason = job.phase === "stopped" && ({ DIRECT_RUNTIME_UNSUPPORTED: "directRuntimeUnsupported",
+  DIRECT_NETWORK_MISMATCH: "directNetworkMismatch" })[job.error_code];
+ $("direct-status").textContent = reason ? t(reason).replace("{runtime}", String(job.runtime ?? "?"))
+  : t(phases[job.phase] || "directStopped");
  $("direct-sign").hidden = job.phase !== "review";
  $("direct-preview").hidden = !job.preview;
  if (job.preview) {

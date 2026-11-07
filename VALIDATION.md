@@ -73,3 +73,11 @@ Offline coverage verifies gateway priority, confirmed release, ambiguous receipt
 The [finalized settlement](https://explorer.devnet.flop.network/transactions/0x510061602e7524880913177efe61a2cb48171117058c00904db708a0494ee0b6) records 0.198 FLOP paid to NurseryPool from a 0.2 FLOP Devnet reserve. Opening fees were quoted separately. The client displayed \`Settled\` and cleared the pending receipt guard.
 
 AntJu is listed separately. A read-only preparation checked the named miner and produced an unsigned fee quote through its temporary public tunnel. The integrated acceptance test above used NurseryPool.
+
+## 0.2.1 runtime compatibility diagnostic — 7 November 2026
+
+35 Python and 12 JavaScript tests pass (47 total). Coverage includes SDK-supported versions beyond the old 1014003 pin, a rejected hole inside the supported range, rejection of 1014014, genesis/denomination checks, safe error redaction and stopping before signature without a paid call or journal row. Syntax checks and `git diff --check` pass.
+
+A read-only invocation of the actual Node worker against the public Devnet RPC returned `not_submitted`, `DIRECT_RUNTIME_UNSUPPORTED`, runtime `1014014`. The official npm `latest` tag still resolves to SDK `0.4.0`; its published explicit compatibility list ends at 1014011. No dependency or compatibility list was patched. No miner call, signature, inference or new settlement was performed in this release. A compatible official SDK and a bounded real-user acceptance test remain necessary.
+
+The local chat journal was preserved byte-for-byte and remaining process caps retained. Local restart requires browser refresh and reconnecting the same Talisman account; it does not renew the expired gateway allowance. No AntJu VM service was modified or restarted.

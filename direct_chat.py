@@ -193,9 +193,16 @@ class Direct:
                     elif phase == "settled":
                         self.apply_final(job["row"], event)
                         job["phase"] = phase
-                    elif phase == "not_submitted" and job.get("row"):
-                        job["row"].update(state="released", local_state="not_submitted")
-                        self.chat.ledger.save()
+                    elif phase == "not_submitted":
+                        code = event.get("error_code")
+                        if code in {"DIRECT_RUNTIME_UNSUPPORTED", "DIRECT_NETWORK_MISMATCH"}:
+                            job["error_code"] = code
+                            runtime = event.get("runtime")
+                            if type(runtime) is int and 0 <= runtime <= 2**32 - 1:
+                                job["runtime"] = runtime
+                        if job.get("row"):
+                            job["row"].update(state="released", local_state="not_submitted")
+                            self.chat.ledger.save()
                         job["phase"] = "stopped"
         except (OSError, ValueError, KeyError):
             pass

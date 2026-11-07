@@ -1,8 +1,10 @@
 # FLOP DID Chat
 
-**Version locale de test 0.2.0 · Français / English · Talisman · Ed25519**
+**Version locale de test 0.2.1 · Français / English · Talisman · Ed25519**
 
 Chat local pour FLOP Devnet. Le gateway est utilisé en priorité, avec une session directe sur un mineur choisi en cas de blocage confirmé.
+
+**Compatibilité actuelle (7 novembre 2026).** Le Devnet annonce le runtime `1014014`, que le SDK officiel installé `0.4.0` ne prend pas en charge. La préparation directe est donc bloquée avant de contacter le mineur ou de demander une signature. La version `0.2.1` utilise la liste explicite des versions acceptées par le SDK et affiche la cause ; elle **n’ajoute pas** la compatibilité `1014014`. Une version officielle compatible du SDK puis un nouveau test réel utilisateur borné sont nécessaires. Voir le [guide officiel de mise à jour](https://docs.flop.network/docs/upgrade). Le succès NurseryPool ci-dessous est historique.
 
 > **Validation Devnet.** Le parcours gateway de la 0.1.0 a rencontré un HTTP 429 avec un reçu libéré. Avec un accès gateway expiré, FLOP DID Chat 0.2.0 a reçu une réponse vérifiée de NurseryPool en direct. La [transaction finalisée](https://explorer.devnet.flop.network/transactions/0x510061602e7524880913177efe61a2cb48171117058c00904db708a0494ee0b6) atteste le paiement de 0,198 FLOP Devnet au mineur. Cette intégration reste expérimentale. Voir [la validation](VALIDATION.md) et [l’incident gateway](https://github.com/flop-labs/network/issues/31).
 >

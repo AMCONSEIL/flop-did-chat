@@ -23,7 +23,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 from direct_chat import Direct, MODEL as DIRECT_MODEL, RAW
 
-VERSION = "0.2.0"
+VERSION = "0.2.1"
 AUTHOR_DID = "did:key:z6Mkt3DNtpGBNh1KHYwLQEk6QtCcJ7vVaRPze1SU7MyhFMVD"
 API = "https://api.flop.network/v1"
 GENESIS = "0x99c172c095340ace980631f9123544c6bebd4839f3437e463533422d8be2d631"

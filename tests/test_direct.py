@@ -1,5 +1,7 @@
 """The fallback, signature handoff and budget use offline fixtures only."""
 import json
+import io
+from unittest.mock import MagicMock
 from pathlib import Path
 import tempfile
 from types import SimpleNamespace
@@ -65,6 +67,27 @@ class DirectTests(unittest.TestCase):
             self.assertEqual(worker.call_args.kwargs["args"][1]["messages"], self.body["messages"])
         self.assertEqual(snapshot["direct"]["job"]["phase"], "checking")
         self.assertNotIn("Fixture", json.dumps(snapshot))
+
+    def test_runtime_rejection_stops_before_signature_and_redacts_raw_errors(self):
+        self.chat.auth["expires_at"] = NOW * 1000
+        self.chat.chat(self.body)
+        with patch("direct_chat.threading.Thread"):
+            self.direct.prepare(self.choice)
+        process = MagicMock()
+        process.stdout = io.StringIO(json.dumps({"phase": "not_submitted",
+            "error_code": "DIRECT_RUNTIME_UNSUPPORTED", "runtime": 1014014,
+            "message": "private RPC details"}) + "\n")
+        process.poll.return_value = 0
+        with patch.object(self.direct, "start_process", return_value=process):
+            self.direct.run(self.direct.job, {"fixture": True})
+        job = self.direct.snapshot()["job"]
+        self.assertEqual(job["phase"], "stopped")
+        self.assertEqual(job["error_code"], "DIRECT_RUNTIME_UNSUPPORTED")
+        self.assertEqual(job["runtime"], 1014014)
+        self.assertNotIn("private RPC", json.dumps(job))
+        self.assertNotIn("payload", job)
+        self.assertNotIn(self.direct.job["id"], self.chat.ledger.rows)
+        self.assertEqual(self.paid_calls(), [])
 
     def test_timeout_and_nonterminal_receipt_block_fallback(self):
         self.gateway.mode = "timeout"
