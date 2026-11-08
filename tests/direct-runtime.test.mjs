@@ -2,9 +2,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { DEVNET_GENESIS, checkDirectNetwork, directDiagnostic } from "../direct_runtime.mjs";
 const api = version => ({ genesisHash: {toHex: () => DEVNET_GENESIS}, registry: {chainDecimals: [18]}, runtimeVersion: {specVersion: version} });
-test("SDK-supported runtime beyond the old hard pin passes", () => checkDirectNetwork(api(1014011)));
-test("live unsupported runtime and a hole inside SDK range stay blocked", () => {
- for (const version of [1014014, 1014006]) {
+test("published SDK accepts the live Devnet runtime and an earlier supported version", () => {
+ for (const version of [1014014, 1014011]) checkDirectNetwork(api(version));
+});
+test("future runtime and a hole inside SDK range stay blocked", () => {
+ for (const version of [1014015, 1014006]) {
   assert.throws(() => checkDirectNetwork(api(version)), e => e.code === "DIRECT_RUNTIME_UNSUPPORTED" && e.runtime === version);
  }
 });

@@ -53,3 +53,11 @@ Personal Talisman login verified; first real manually sent chat prompt failed wi
 ## Runtime compatibility diagnostic — 7 November 2026
 
 Direct preparation now uses the pinned SDK explicit supported-spec list instead of a single hardcoded 1014003. Live Devnet reports 1014014, absent from published SDK 0.4.0: direct operations remain blocked before miner contact or signature. A compatible official release is required; do not patch the SDK list to bypass this gate. Only allowlisted runtime/network diagnostics reach the browser, never raw RPC errors. Existing budgets, ledger, receipts and signature guards are preserved.
+
+## Official SDK update — 8 November 2026
+
+Version 0.2.2 pins the published npm SDK 0.5.1, released 2026-11-08T16:13:56.615Z, with the registry SHA-512 integrity preserved in package-lock.json. Its unchanged explicit compatibility list accepts 1014014; the live genesis remains the expected Devnet. Future versions and gaps in the list still fail closed. Companion module exports used by the chat are checked after installation.
+
+This change preserves the direct client's existing opening/SLA path, identity checks, quote, signatures, budgets, idempotent IDs, receipts and reconciliation behavior. The Standard-channel standalone test is a separate integration and is not a qualification of this force-open client. A new bounded user acceptance test must verify reply and finalized payment for this release; no automatic inference or signature is part of the update.
+
+The upgrade does not renew gateway allowance. Preserve .local exactly and do not restart merely to reset a process budget. The observed local server was already stopped with an orphaned process lock; that lock and the journal are preserved for an explicit checked reopening. No professional infrastructure is in scope.

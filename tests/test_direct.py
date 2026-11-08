@@ -75,7 +75,7 @@ class DirectTests(unittest.TestCase):
             self.direct.prepare(self.choice)
         process = MagicMock()
         process.stdout = io.StringIO(json.dumps({"phase": "not_submitted",
-            "error_code": "DIRECT_RUNTIME_UNSUPPORTED", "runtime": 1014014,
+            "error_code": "DIRECT_RUNTIME_UNSUPPORTED", "runtime": 1014015,
             "message": "private RPC details"}) + "\n")
         process.poll.return_value = 0
         with patch.object(self.direct, "start_process", return_value=process):
@@ -83,7 +83,7 @@ class DirectTests(unittest.TestCase):
         job = self.direct.snapshot()["job"]
         self.assertEqual(job["phase"], "stopped")
         self.assertEqual(job["error_code"], "DIRECT_RUNTIME_UNSUPPORTED")
-        self.assertEqual(job["runtime"], 1014014)
+        self.assertEqual(job["runtime"], 1014015)
         self.assertNotIn("private RPC", json.dumps(job))
         self.assertNotIn("payload", job)
         self.assertNotIn(self.direct.job["id"], self.chat.ledger.rows)

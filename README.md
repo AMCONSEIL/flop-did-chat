@@ -1,10 +1,10 @@
 # FLOP DID Chat
 
-**Local test version 0.2.1 · English / Français · Talisman · Ed25519**
+**Local test version 0.2.2 · English / Français · Talisman · Ed25519**
 
 Local chat for FLOP Devnet. The gateway is tried first, with a direct session to a selected miner offered when a confirmed block prevents completion.
 
-**Current compatibility (November 7, 2026).** Devnet reports runtime `1014014`. The installed official SDK `0.4.0` does not support it, so direct preparation currently stops before contacting the miner or requesting a signature. Version `0.2.1` uses the SDK explicit supported-version list and explains this refusal; it does **not** add support for `1014014`. An official compatible SDK release and a new bounded real-user test are required before claiming live support. See the [official upgrade guide](https://docs.flop.network/docs/upgrade). The successful NurseryPool test below is historical.
+**Current compatibility (November 8, 2026).** Version `0.2.2` pins the official npm SDK `0.5.1`, whose unmodified compatibility list explicitly accepts the live Devnet runtime `1014014`. Unsupported versions, the network identity and denomination remain checked. Offline and read-only checks do not validate a paid session: a new bounded Talisman user test is still required. The successful NurseryPool test below is historical. A separate Standard-channel experiment does not validate this chat's existing force-open path. See the [official upgrade guide](https://docs.flop.network/docs/upgrade).
 
 > **Devnet validation.** The v0.1.0 gateway route returned HTTP 429 and a released receipt. With the gateway allowance expired, FLOP DID Chat v0.2.0 received a verified direct reply from NurseryPool. The [finalized transaction](https://explorer.devnet.flop.network/transactions/0x510061602e7524880913177efe61a2cb48171117058c00904db708a0494ee0b6) records 0.198 Devnet FLOP paid to the miner. This integration remains experimental. See [validation details](VALIDATION.md) and the [gateway incident](https://github.com/flop-labs/network/issues/31).
 >
