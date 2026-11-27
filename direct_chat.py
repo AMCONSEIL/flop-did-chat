@@ -10,25 +10,15 @@ import time
 from urllib.parse import urlsplit
 
 BASE = Path(__file__).resolve().parent
-MODEL = "qwen/qwen2.5-0.5b-instruct"
-ESCROW = 200_000_000_000_000_000
 FEE_CAP = 20_000_000_000_000_000
 RAW = 10**18
 HASH = re.compile(r"0x[0-9a-f]{64}")
-ANTJU = {
-    "name": "AntJu",
-    "address": "5Hb9YKuWTejdAXrtzP1a91me3AzmNFmWQ1q5k6PdGn1chTNf",
-    "endpoint": "https://fuzzy-compound-shark-click.trycloudflare.com",
-}
-NURSERYPOOL = {
-    "name": "NurseryPool",
-    "address": "5DkyfWjukrF6RJ8ZSii1eAQ8A7AAxZsHwdoJ1CHmAWY6NzqU",
-    "endpoint": "https://flop.nurserypool.com",
-}
 
+def model_slug(value):
+    return isinstance(value, str) and len(value) <= 200 and bool(re.fullmatch(r"[a-z0-9][a-z0-9._-]*/[a-z0-9][a-z0-9._-]*", value))
 
 def configured_miners(path, parse_identity, error):
-    miners = [ANTJU, NURSERYPOOL]
+    miners = []
     if path.exists():
         try:
             if path.stat().st_size > 16_384:
@@ -40,7 +30,10 @@ def configured_miners(path, parse_identity, error):
                 if not isinstance(entry, dict) or not all(isinstance(entry.get(k), str)
                                                           for k in ("name", "address", "endpoint")):
                     continue
-                endpoint = urlsplit(entry["endpoint"])
+                try:
+                    endpoint = urlsplit(entry["endpoint"])
+                except ValueError:
+                    continue
                 if (endpoint.scheme != "https" or not endpoint.hostname
                         or not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9.-]*\.[a-zA-Z]{2,}", endpoint.netloc)
                         or endpoint.path not in ("", "/") or endpoint.query or endpoint.fragment
@@ -48,13 +41,19 @@ def configured_miners(path, parse_identity, error):
                     continue
                 try:
                     address = parse_identity(entry["address"])["address"]
+                    if address != entry["address"]:
+                        continue
                 except (ValueError, error):
                     continue
                 origin = "https://" + endpoint.netloc.lower()
-                if address == ANTJU["address"] and miners[0] == ANTJU:
-                    miners[0] = {**ANTJU, "endpoint": origin}
-                elif address not in {miner["address"] for miner in miners}:
-                    miners.append({"name": entry["name"], "address": address, "endpoint": origin})
+                if endpoint.hostname.split(".")[-1] in {"localhost","local","internal","lan","home","test","invalid"}:
+                    continue
+                if address not in {miner["address"] for miner in miners}:
+                    pin = entry.get("enclaveKey")
+                    if pin is not None and not (isinstance(pin, str) and re.fullmatch(r"[a-f0-9]{64}", pin)):
+                        continue
+                    miners.append({"name": entry["name"], "address": address, "endpoint": origin,
+                                   **({"enclaveKey": pin} if pin else {})})
         except (ValueError, OSError):
             pass
     return miners
@@ -88,14 +87,22 @@ class Direct:
             address = c.account["address"]
             if not miner or miner["address"] == address:
                 raise self.error("DIRECT_MINER_INVALID")
-            charge = c.decimal_cost(ESCROW + FEE_CAP)
+            value = str(body.get("escrow", "0.05"))
+            if not re.fullmatch(r"(?:0|[1-9][0-9]{0,17})(?:\.[0-9]{1,18})?", value):
+                raise self.error("AMOUNT_INVALID")
+            whole, _, fraction = value.partition(".")
+            escrow = int(whole) * RAW + int(fraction.ljust(18, "0"))
+            if escrow <= 0:
+                raise self.error("AMOUNT_INVALID")
+            charge = c.decimal_cost(escrow + FEE_CAP)
             if charge > source["cap"] or charge > c.request_cap or c.session_commitment() + charge > c.session_cap:
                 raise self.error("SESSION_LIMIT", 403)
             self.job = job = {"id": "direct-" + source["id"][5:], "source_id": source["id"],
-                              "address": address, "miner": miner, "phase": "checking"}
+                              "address": address, "miner": miner, "model": source["model"], "escrow_raw": str(escrow), "phase": "checking"}
             worker_input = {"address": address, "miner": miner["address"], "endpoint": miner["endpoint"],
-                            "model": MODEL, "messages": source["messages"], "maxTokens": min(source["tokens"], 48),
-                            "escrow": str(ESCROW), "fee_cap": str(FEE_CAP)}
+                            "model": source["model"], "messages": source["messages"], "maxTokens": source["tokens"],
+                            "keyType": c.account["type"], "enclaveKey": miner.get("enclaveKey"), "duration": 1200,
+                            "escrow": str(escrow), "fee_cap": str(FEE_CAP)}
             threading.Thread(target=self.run, args=(job, worker_input), daemon=True).start()
             return c.snapshot()
 
@@ -118,18 +125,18 @@ class Direct:
         with c.lock:
             job = self.current(body, "signing")
             signature = body.get("signature")
-            if not isinstance(signature, str) or not re.fullmatch(r"0x(?:00)?[0-9a-fA-F]{128}", signature):
+            if not isinstance(signature, str) or not re.fullmatch(r"0x(?:00|01)?[0-9a-fA-F]{128}", signature):
                 raise self.error("SIGNATURE_INVALID")
             if job["id"] in c.ledger.rows or c.unresolved():
                 raise self.error("RECONCILE_REQUIRED", 409)
             preview = job["preview"]
             row = {"request_id": job["id"], "gateway_request_id": job["source_id"], "route": "direct",
-                   "address": job["address"], "model": MODEL, "miner": job["miner"]["address"],
+                   "address": job["address"], "model": job["model"], "escrow_raw": job["escrow_raw"], "miner": job["miner"]["address"],
                    "channel_id": preview["channel_id"], "scan_from": preview["scan_from"],
                    "created_at": int(c.clock() * 1000), "state": "unknown", "local_state": "sending",
-                   "response_received": False, "reserved_spend": float(c.decimal_cost(ESCROW)),
+                   "response_received": False, "reserved_spend": float(c.decimal_cost(int(job["escrow_raw"]))),
                    "settled_spend": None, "settled_spend_raw": None, "terminal_event": None,
-                   "max_cost_flop": str(c.decimal_cost(ESCROW + FEE_CAP)), "max_tokens": preview["max_tokens"],
+                   "max_cost_flop": str(c.decimal_cost(int(job["escrow_raw"]) + FEE_CAP)), "max_tokens": preview["max_tokens"],
                    "opening_fee_estimate_raw": preview["fee"], "opening_fee_cap_raw": str(FEE_CAP)}
             c.ledger.rows[job["id"]] = row
             try:
@@ -237,10 +244,11 @@ class Direct:
         update = {"state": phase, "local_state": "reconciled", "terminal_event": tx}
         if phase == "settled":
             paid, burned = int(event["miner_paid_raw"]), int(event["burned_raw"])
-            if not 0 <= paid <= ESCROW or not 0 <= burned <= ESCROW - paid:
+            escrow = int(row["escrow_raw"])
+            if int(event["aggregate_gn"]) < 0 or not 0 <= paid <= escrow or not 0 <= burned <= escrow - paid:
                 raise ValueError("invalid finalized payment")
             update.update(settled_spend_raw=str(paid + burned), miner_paid_raw=str(paid),
-                          burned_raw=str(burned))
+                          burned_raw=str(burned), settled_gn=str(int(event["aggregate_gn"])))
         row.update(update)
         self.chat.ledger.save()
 

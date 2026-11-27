@@ -10,6 +10,7 @@ from pathlib import Path
 import re
 import secrets
 import signal
+import subprocess
 import threading
 import time
 from decimal import Decimal, InvalidOperation
@@ -21,12 +22,13 @@ import urllib.request
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
-from direct_chat import Direct, MODEL as DIRECT_MODEL, RAW
+from direct_chat import Direct, model_slug, RAW
+from faucet import Faucet
 
-VERSION = "0.2.2"
+VERSION = "0.3.0"
 AUTHOR_DID = "did:key:z6Mkt3DNtpGBNh1KHYwLQEk6QtCcJ7vVaRPze1SU7MyhFMVD"
-API = "https://api.flop.network/v1"
-GENESIS = "0x99c172c095340ace980631f9123544c6bebd4839f3437e463533422d8be2d631"
+API = "https://gateway.testnet.flop.network/v1"
+GENESIS = "0x918abd58fb16306b30ef3886514cfaebffecb4de43e82b6f8ec4795c43cfd800"
 BASE = Path(__file__).resolve().parent
 B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
 MAX_BODY = 100_000
@@ -73,14 +75,17 @@ def b58decode(text):
     return raw
 
 
-def identity(public):
+def identity(public, key_type="ed25519"):
+    if key_type not in ("ed25519", "sr25519"):
+        raise ChatError("IDENTITY_INVALID")
+    codec = b"\xed\x01" if key_type == "ed25519" else b"\xef\x01"
     payload = b"\x2a" + public
     checksum = hashlib.blake2b(b"SS58PRE" + payload, digest_size=64).digest()[:2]
-    return {"did": "did:key:z" + b58encode(b"\xed\x01" + public),
+    return {"type": key_type, "did": "did:key:z" + b58encode(codec + public),
             "address": b58encode(payload + checksum), "public_key": "0x" + public.hex()}
 
 
-def parse_identity(address, did=None):
+def parse_identity(address, did=None, key_type="ed25519"):
     raw = b58decode(address)
     if raw[0] & 0x80:
         raise ChatError("IDENTITY_INVALID")
@@ -90,7 +95,7 @@ def parse_identity(address, did=None):
     checksum = hashlib.blake2b(b"SS58PRE" + raw[:-2], digest_size=64).digest()[:2]
     if not secrets.compare_digest(checksum, raw[-2:]):
         raise ChatError("IDENTITY_INVALID")
-    result = identity(raw[prefix:-2])
+    result = identity(raw[prefix:-2], key_type)
     if did and did != result["did"]:
         raise ChatError("DID_MISMATCH")
     return result
@@ -116,16 +121,27 @@ def positive_limit(value):
     return number
 
 
-def verify_signature(public_hex, message, signature):
+def verify_signature(public_hex, message, signature, key_type="ed25519", wrapped_only=False):
     if not isinstance(signature, str) or not re.fullmatch(r"0x[0-9a-fA-F]{128}(?:[0-9a-fA-F]{2})?", signature):
         raise ChatError("SIGNATURE_INVALID")
+    if key_type == "sr25519":
+        try:
+            result = subprocess.run(["node", str(BASE / "wallet_verify.mjs"), "--verify"],
+                    input=json.dumps(dict(type=key_type, publicKey=public_hex, message=message,
+                                          signature=signature, wrappedOnly=wrapped_only)),
+                    text=True, capture_output=True, timeout=12)
+        except (OSError, subprocess.TimeoutExpired):
+            raise ChatError("WALLET_VERIFIER_UNAVAILABLE", 503) from None
+        if result.returncode:
+            raise ChatError("SIGNATURE_INVALID")
+        return
     raw = bytes.fromhex(signature[2:])
     if len(raw) == 65:
         if raw[0] != 0:
             raise ChatError("ED25519_REQUIRED")
         raw = raw[1:]
     key = Ed25519PublicKey.from_public_bytes(bytes.fromhex(public_hex[2:]))
-    for payload in [message.encode(), b"<Bytes>" + message.encode() + b"</Bytes>"]:
+    for payload in ([message.encode()] if not wrapped_only else []) + [b"<Bytes>" + message.encode() + b"</Bytes>"]:
         try:
             key.verify(raw, payload)
             return
@@ -220,10 +236,12 @@ class Ledger:
 
 class Chat:
     def __init__(self, ledger, gateway=None, expected_did=None, reconcile_request=None,
-                 session_cap=Decimal("0.9"), clock=None):
+                 session_cap=Decimal("0.9"), clock=None, expected_address=None):
         self.ledger = Ledger(ledger)
         self.gateway = gateway or Gateway()
         self.expected_did = expected_did
+        self.expected_address = parse_identity(expected_address)["address"] if expected_address else None
+        self.faucet = Faucet(Path(ledger).with_name("faucet-testnet.json"), GENESIS, ChatError, verify_signature)
         self.reconcile_request = reconcile_request
         self.session_cap = positive_limit(session_cap)
         self.request_cap = DEFAULT_REQUEST_CAP
@@ -271,9 +289,17 @@ class Chat:
         return self.snapshot()
 
     def new_challenge(self, body):
-        account = parse_identity(body.get("address"), body.get("did") or None)
+        did = body.get("did") or self.expected_did
+        key_type = body.get("type", "ed25519")
+        if did and parse_identity(body.get("address"))["did"] == did:
+            key_type = "ed25519"
+        account = parse_identity(body.get("address"), key_type=key_type)
+        if self.expected_address and self.expected_address != account["address"]:
+            raise ChatError("EXPECTED_ADDRESS_MISMATCH")
         if self.expected_did and account["did"] != self.expected_did:
             raise ChatError("EXPECTED_DID_MISMATCH")
+        if did and account["did"] != did:
+            raise ChatError("DID_MISMATCH")
         with self.lock:
             if self.direct.active() or any(r.get("local_state") == "sending" and r.get("route") != "direct"
                                            for r in self.ledger.rows.values()):
@@ -290,8 +316,10 @@ class Chat:
                     raise ChatError("NO_MODELS_AVAILABLE", 503)
                 challenge = self.remote("/enroll/wallet/challenge?" + urllib.parse.urlencode({"address": account["address"]}))
             except ChatError as error:
-                if not self.direct.available or (error.status != 503 and error.code not in
-                        GATEWAY_EXPIRY_CODES | {"GATEWAY_UNREACHABLE"}):
+                if error.status == 404:
+                    error = ChatError("ENROLLMENT_UNAVAILABLE", 404)
+                if error.status != 404 and (not self.direct.available or (error.status != 503 and error.code not in
+                        GATEWAY_EXPIRY_CODES | {"GATEWAY_UNREACHABLE"})):
                     raise
                 expiry = int((self.clock() + 120) * 1000)
                 message = "\n".join(["FLOP DID Chat local connection — no blockchain transaction",
@@ -305,8 +333,8 @@ class Chat:
             if (not isinstance(message, str) or len(message) > 3500
                     or not isinstance(nonce, str) or not re.fullmatch(r"[0-9a-f]{64}", nonce)
                     or not isinstance(expiry, int) or not self.clock() * 1000 < expiry <= (self.clock() + 360) * 1000
-                    or "Action: flop-devnet-enroll/v1" not in message.splitlines()
-                    or account["address"] not in message or GENESIS not in message or nonce not in message):
+                    or "Action: flop-testnet-enroll/v1" not in message.splitlines()
+                    or not {"Address: " + account["address"], "Genesis: " + GENESIS, "Nonce: " + nonce, "Domain: https://gateway.testnet.flop.network"}.issubset(message.splitlines())):
                 raise ChatError("CHALLENGE_INVALID", 502)
             self.challenge = {"account": account, "message": message, "expires_at": expiry,
                               "submitted": False}
@@ -322,7 +350,7 @@ class Chat:
             c = self.challenge
             if not c or c["submitted"] or c["expires_at"] <= self.clock() * 1000:
                 raise ChatError("CHALLENGE_EXPIRED", 409)
-            verify_signature(c["account"]["public_key"], c["message"], body.get("signature"))
+            verify_signature(c["account"]["public_key"], c["message"], body.get("signature"), c["account"]["type"])
             c["submitted"] = True
             if c.get("local_reason"):
                 return self.local_connection(c, c["local_reason"])
@@ -331,6 +359,8 @@ class Chat:
                     "address": c["account"]["address"], "message": c["message"],
                     "signature": body["signature"]})
             except ChatError as error:
+                if error.status == 404:
+                    return self.local_connection(c, "ENROLLMENT_UNAVAILABLE")
                 if not self.direct.available or (error.code not in GATEWAY_EXPIRY_CODES | {"devnet_allowance_exhausted",
                         "wallet_unfunded", "GATEWAY_UNREACHABLE"} and error.status != 503):
                     raise
@@ -390,7 +420,7 @@ class Chat:
     def direct_allowed(self, source):
         if (not self.account or source["address"] != self.account["address"] or self.unresolved()
                 or self.direct.active() or "direct-" + source["id"][5:] in self.ledger.rows
-                or source["model"] != DIRECT_MODEL):
+                or not model_slug(source["model"])):
             return False
         if self.reconcile_request and not any(r["request_id"] == self.reconcile_request and r.get("state") in TERMINAL
                 for r in self.ledger.for_address(self.account["address"]) + self.external):
@@ -459,6 +489,12 @@ class Chat:
                     "direct": {**self.direct.snapshot(),
                                "request_id": self.direct_candidate["id"] if self.direct.available and
                                self.direct_candidate and self.direct_allowed(self.direct_candidate) else None}}
+
+    def faucet_action(self, action, body):
+        with self.lock:
+            if not self.account:
+                raise ChatError("CONNECT_REQUIRED", 401)
+            return getattr(self.faucet, action)(self.account, body)
 
     def refresh(self):
         with self.lock:
@@ -545,7 +581,7 @@ class Chat:
             if not isinstance(request_id, str) or not re.fullmatch(r"chat-[0-9a-f]{32}", request_id):
                 raise ChatError("REQUEST_ID_INVALID")
             model, messages = body.get("model"), body.get("messages")
-            tokens = body.get("max_tokens", 48)
+            tokens = body.get("max_tokens", 256)
             cap = positive_limit(body.get("max_cost_flop", str(self.request_cap)))
             if cap > self.request_cap or type(tokens) is not int or not 1 <= tokens <= TOKEN_CAP:
                 raise ChatError("LIMIT_INVALID")
@@ -570,9 +606,12 @@ class Chat:
             if "direct-" + request_id[5:] in self.ledger.rows:
                 raise ChatError("REQUEST_ID_CONFLICT", 409)
             block = self.direct_gateway_block()
-            if block and self.direct.available and model == DIRECT_MODEL:
-                self.fallback(request_id, payload, cap)
-                return {"error": ChatError(block, 403).public(), "state": self.snapshot()}
+            if body.get("route") == "direct" and (not self.direct.available or not model_slug(model)):
+                raise ChatError("DIRECT_NOT_ALLOWED", 409)
+            if (block or body.get("route") == "direct") and self.direct.available and model_slug(model):
+                self.fallback(request_id, payload, cap, status="catalog" if not block else None)
+                return {"direct_offer": True, "state": self.snapshot()} if body.get("route") == "direct" else {
+                    "error": ChatError(block, 403).public(), "state": self.snapshot()}
             if not self.connected():
                 raise ChatError("CONNECT_REQUIRED", 401)
             if self.cooldown_until > self.clock():
@@ -585,7 +624,7 @@ class Chat:
                     if model not in {m["id"] for m in self.models}:
                         raise ChatError("MODEL_NOT_AVAILABLE", 503)
                 except ChatError as error:
-                    if (not self.direct.available or model != DIRECT_MODEL
+                    if (not self.direct.available or not model_slug(model)
                             or (error.status != 503 and error.code != "GATEWAY_UNREACHABLE")):
                         raise
                     self.fallback(request_id, payload, cap, "catalog")
@@ -740,6 +779,9 @@ def make_handler(chat):
                 routes = {"/api/limits": lambda: chat.update_limits(body), "/api/models": lambda: chat.catalog(), "/api/challenge": lambda: chat.new_challenge(body),
                           "/api/enroll": lambda: chat.enroll(body), "/api/refresh": lambda: chat.refresh(),
                           "/api/chat": lambda: chat.chat(body), "/api/disconnect": lambda: chat.disconnect(),
+                          "/api/faucet/status": lambda: chat.faucet_action("status", body),
+                          "/api/faucet/prepare": lambda: chat.faucet_action("prepare", body),
+                          "/api/faucet/submit": lambda: chat.faucet_action("submit", body),
                           "/api/direct/prepare": lambda: chat.direct.prepare(body),
                           "/api/direct/sign": lambda: chat.direct.sign(body),
                           "/api/direct/submit": lambda: chat.direct.submit(body),
@@ -761,6 +803,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", type=int, default=50510)
     parser.add_argument("--open-browser", action="store_true")
+    parser.add_argument("--expected-address", help="Lock this installation to a public SS58 address.")
     parser.add_argument("--expected-did", help="Optional public DID lock for your personal installation.")
     parser.add_argument("--reconcile-request", help="Existing public receipt ID to reconcile after enrollment.")
     args = parser.parse_args()
@@ -777,7 +820,7 @@ def main():
     os.close(lock_fd)
     server = None
     try:
-        chat = Chat(local / "ledger.json", expected_did=args.expected_did,
+        chat = Chat(local / "ledger-testnet.json", expected_did=args.expected_did, expected_address=args.expected_address,
                     reconcile_request=args.reconcile_request)
         server = ThreadingHTTPServer(("127.0.0.1", args.port), make_handler(chat))
         server.daemon_threads = True

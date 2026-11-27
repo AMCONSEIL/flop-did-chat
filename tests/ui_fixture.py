@@ -11,9 +11,32 @@ from test_chat import FakeGateway, KEY, IDENTITY, NOW, SEED
 
 base = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser()
+parser.add_argument("--port", type=int, default=50511)
 parser.add_argument("--ledger", type=Path, default=base / "validation.local" / "fixture-ledger.json")
+parser.add_argument("--gateway-404", action="store_true")
+parser.add_argument("--faucet-open", action="store_true")
 args = parser.parse_args()
 chat = Chat(args.ledger, FakeGateway(), clock=lambda: NOW)
+if args.gateway_404:
+    original_request = chat.gateway.request
+    def gateway_request(path, *params):
+        if path.startswith("/enroll/wallet/challenge?"):
+            raise test_chat.ChatError("GATEWAY_HTTP", 404)
+        return original_request(path, *params)
+    chat.gateway.request = gateway_request
+
+def fixture_faucet(url, payload=None):
+    if url.endswith("/chain"):
+        return 200, {"network":"testnet", "genesisHash":test_chat.GENESIS}
+    if url.endswith("/limits"):
+        return 200, {"network":"testnet","stale":False,"faucet":{"status":"open" if args.faucet_open else "daily_cap_reached","agent":{"grantFlop":10,
+                    "claimPath":"/v1/testnet/agent-claims"},"dailyCap":{"remainingFlop":10 if args.faucet_open else 0}}}
+    if args.faucet_open and url.endswith("/v1/testnet/agent-claims"):
+        return 200, {"success":True, "amount":10, "txHash":"0x"+"aa"*32, "status":"included"}
+    if payload and payload.get("method") in {"state_getStorage","chain_getFinalizedHead","chain_getBlockHash"}:
+        return 200, {"result": None if payload["method"] == "state_getStorage" else test_chat.GENESIS}
+    raise AssertionError("Unexpected offline request")
+chat.faucet.request = fixture_faucet
 chat.direct.available = False  # Offline fixture must never start the real SDK worker.
 real_handler = make_handler(chat)
 wallet_script = """
@@ -40,7 +63,7 @@ document.addEventListener('DOMContentLoaded',()=>{
  control.addEventListener('click',()=>fetch('/fixture/429',{method:'POST'}));
  document.querySelector('.network-note').append(control);
 });
-""".replace("ACCOUNT", json.dumps({"address": IDENTITY["address"], "name": "RFC8032 PUBLIC TEST ACCOUNT", "type": "sr25519"})).replace("PKCS8", json.dumps("302e020100300506032b657004220420" + SEED.hex()))
+""".replace("ACCOUNT", json.dumps({"address": IDENTITY["address"], "name": "RFC8032 PUBLIC TEST ACCOUNT", "type": "ed25519"})).replace("PKCS8", json.dumps("302e020100300506032b657004220420" + SEED.hex()))
 
 class Fixture(real_handler):
     def do_GET(self):
@@ -57,9 +80,9 @@ class Fixture(real_handler):
             return self.send(200,{"fixture":True})
         return super().do_POST()
 
-server=ThreadingHTTPServer(("127.0.0.1",50511),Fixture)
-server.local_host="127.0.0.1:50511"
-print("OFFLINE fixture http://127.0.0.1:50511",flush=True)
+server=ThreadingHTTPServer(("127.0.0.1",args.port),Fixture)
+server.local_host=f"127.0.0.1:{server.server_port}"
+print("OFFLINE fixture http://" + server.local_host,flush=True)
 try: server.serve_forever()
 except KeyboardInterrupt: pass
 finally: server.server_close()

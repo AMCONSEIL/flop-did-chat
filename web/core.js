@@ -48,9 +48,9 @@ export function contextFor(conversation, prompt) {
   messages.push({ role: "user", content: prompt });
   return messages;
 }
-export function canSend(state, busy, text, model, now = Date.now() / 1000) {
-  if (state?.direct?.available && state.gateway_block && state.account &&
-      model === "qwen/qwen2.5-0.5b-instruct") {
+export function canSend(state, busy, text, model, now = Date.now() / 1000, route = "gateway") {
+  if (state?.direct?.available && (state.gateway_block || route === "direct") && state.account &&
+      /^[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._-]*$/.test(model)) {
     return Boolean(!busy && text.trim() && !state.unresolved?.length
       && Number(state.limits?.session_committed) < Number(state.limits?.session_cap));
   }
@@ -77,7 +77,7 @@ export function safeConversationStore(conversations) {
 
 // Talisman labels SS58 accounts sr25519 even when the underlying key is Ed25519.
 // These are candidates only: the server checks SS58 checksum, expected DID and
-// the actual Ed25519 signature before enrollment. Metadata is not key proof.
+// the actual wallet signature before enrollment. Metadata is not key proof.
 export function substrateCandidates(available) {
   if (!Array.isArray(available)) return [];
   const seen = new Set();

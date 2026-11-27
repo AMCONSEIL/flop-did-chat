@@ -1,12 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { DEVNET_GENESIS, checkDirectNetwork, directDiagnostic } from "../direct_runtime.mjs";
-const api = version => ({ genesisHash: {toHex: () => DEVNET_GENESIS}, registry: {chainDecimals: [18]}, runtimeVersion: {specVersion: version} });
-test("published SDK accepts the live Devnet runtime and an earlier supported version", () => {
- for (const version of [1014014, 1014011]) checkDirectNetwork(api(version));
+import { TESTNET_GENESIS, checkDirectNetwork, directDiagnostic } from "../direct_runtime.mjs";
+const api = version => ({ genesisHash: {toHex: () => TESTNET_GENESIS}, registry: {chainSS58: 42, chainDecimals: [18], chainTokens:["FLOP"]}, runtimeVersion: {specVersion: version} });
+test("published SDK accepts the live Testnet runtime and an earlier supported version", () => {
+ for (const version of [1014039, 1014040]) checkDirectNetwork(api(version));
 });
 test("future runtime and a hole inside SDK range stay blocked", () => {
- for (const version of [1014015, 1014006]) {
+ for (const version of [9999999, 1014036]) {
   assert.throws(() => checkDirectNetwork(api(version)), e => e.code === "DIRECT_RUNTIME_UNSUPPORTED" && e.runtime === version);
  }
 });

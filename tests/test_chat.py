@@ -20,7 +20,7 @@ from flop_chat import (Chat, ChatError, GENESIS, Gateway, Ledger, b58encode,
 SEED = bytes.fromhex("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60")
 KEY = Ed25519PrivateKey.from_private_bytes(SEED)
 IDENTITY = identity(KEY.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw))
-MODEL = "qwen/qwen2.5-0.5b-instruct"
+MODEL = "qwen/qwen3-8b"
 NOW = 1_800_000_000
 SECRET = "fixture-bearer-never-in-browser"
 
@@ -47,7 +47,7 @@ class FakeGateway:
         self.quota = 20_000
         self.read_error = False
         self.challenge_message = "\n".join([
-            "FLOP wallet connection", "Action: flop-devnet-enroll/v1", "Domain: https://api.flop.network",
+            "FLOP wallet connection", "Action: flop-testnet-enroll/v1", "Domain: https://gateway.testnet.flop.network",
             "Genesis: " + GENESIS, "Address: " + IDENTITY["address"], "Nonce: " + "1" * 64,
             "Issued At: " + str(NOW * 1000), "Expires At: " + str((NOW + 300) * 1000)])
 
