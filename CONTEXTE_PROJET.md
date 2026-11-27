@@ -6,4 +6,12 @@ Le serveur Python, l’interface EN/FR et le worker SDK 0.13.1 prennent en charg
 
 Le 27 novembre 2026, les lectures publiques ont confirmé la genèse, le runtime 1014039, les propriétés FLOP, huit modèles et l’inscription gateway indisponible (404). Le faucet annonçait un budget nul à 12:43 UTC. Les commandes de validation, les observations et la recette utilisateur figurent dans VALIDATION.md.
 
-Les 44 tests Python, les 18 tests Node et deux parcours Chromium avec wallet simulé passent. Les lanceurs Windows ont été relus sous Linux. La prochaine étape est la contre-vérification locale du diff puis une recette Talisman et Windows avec l’accord de l’utilisateur. La branche reste locale pour revue.
+Le contrôle initial a validé 44 tests Python, 18 tests Node et deux parcours Chromium avec wallet simulé. Les lanceurs Windows ont été relus sous Linux avant la recette ci-dessous.
+
+## Recette Windows du 27 novembre 2026
+
+Le clone de recette utilise `feat/testnet-v0.3.0` au commit `9e66472`. Le lancement sur le port 50511, la connexion Talisman avec un DID Technocore Ed25519, la lecture du solde Testnet et l’affichage du devis direct Yukon ont été vérifiés. Les mineurs Yukon et Floperati sont configurés localement. L’inscription gateway renvoie HTTP 404.
+
+La tentative Yukon est en attente de réconciliation, sans hash d’ouverture ni réponse. Le contrôle a trouvé la finalité au bloc 248399 alors que la tête atteignait 248849. Le canal était absent de la tête et de l’état finalisé, avec un nonce de compte identique au bloc de départ et à la tête. Conserver le journal. La recette `forceOpen` attend la résolution de [FLOP #1775](https://github.com/flop-labs/network/issues/1775). Reprendre par « Vérifier les reçus » quand la finalité progresse, avant tout nouvel envoi. La cause de l’absence d’ouverture pour Yukon reste à établir.
+
+Le formulaire français et anglais donne un libellé explicite pour les DID Technocore importés et mémorise le type de signature vérifié par adresse dans le navigateur. Le helper du test sr25519 transmet le défi à Node en octets UTF-8 pour éviter la conversion Windows. Sur Windows, les 44 tests Python et les 18 tests Node passent. Edge avec un compte simulé a confirmé l’aide en cas de mauvais type, la connexion Ed25519, la mémorisation après rechargement et le libellé français. Le bilan figure dans [VALIDATION.md](VALIDATION.md). Les changements sont préparés sur `feat/testnet-v0.3.0` pour revue avant fusion.

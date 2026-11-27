@@ -1,7 +1,10 @@
 import { short, rawFlop, amount, metrics, contextFor, canSend, safeConversationStore, substrateCandidates } from "./core.js";
 const $ = id => document.getElementById(id);
 const TEXT = {
- keyType: ["Type de signature du compte", "Wallet signature scheme"],
+ keyType: ["Type de compte", "Account type"],
+ keyTypeStandard: ["Compte Talisman standard (sr25519)", "Standard Talisman account (sr25519)"],
+ keyTypeDid: ["DID Technocore importé (Ed25519)", "Imported Technocore DID (Ed25519)"],
+ walletSignatureHelp: ["La signature n’a pas pu être vérifiée. Pour un DID Technocore importé, choisissez l’option Ed25519, puis affichez un nouveau message à signer.", "The signature could not be verified. For an imported Technocore DID, select the Ed25519 option and review a new signing message."],
  route: ["Parcours", "Route"], directSlug: ["Modèle direct (facultatif)", "Direct model (optional)"],
  minersEmpty: ["Ajoutez un mineur dans .local/direct-miners.json puis relancez le chat.", "Configure a miner in .local/direct-miners.json and restart the chat."],
  fRefresh: ["Vérifier le solde et le faucet", "Check balance and faucet"], fClaim: ["Réclamer +10 FLOP", "Claim +10 FLOP"],
@@ -32,7 +35,7 @@ const TEXT = {
  directFeeCap: ["Plafond accepté pour l’estimation des frais", "Accepted fee estimate ceiling"],
  directExplorer: ["Voir le règlement sur l’explorateur", "View settlement in the explorer"],
  directLocalLogin: ["Compte vérifié. Gateway indisponible. Le chat proposera une session directe à l’envoi.", "Account verified. Gateway unavailable. The chat will offer a direct session when you send."],
-connectionHelp:["Sélectionnez le compte lié à votre DID. Le chat vérifie sa signature sr25519 ou Ed25519 avant de valider la connexion.","Select the account linked to your DID. The chat verifies its sr25519 or Ed25519 signature before accepting the connection."],
+connectionHelp:["Sélectionnez le compte à connecter. Le type est mémorisé dans ce navigateur après une connexion réussie.","Select the account to connect. This browser remembers its type after a successful sign-in."],
 settingsLabel:["Réglages","Settings"],
 noCompatibleAccounts:["Aucun compte Substrate compatible partagé. Dans Talisman, autorisez le compte existant lié à votre DID.","No compatible Substrate account shared. In Talisman, allow the existing account linked to your DID."],
 accountsEmpty:["Aucun compte chargé","No account loaded"],
@@ -169,6 +172,7 @@ let directPoll;
 let conversations = [], activeId = null, requestLimit = "0.9", maxTokens = 256;
 const csrf = document.querySelector('meta[name="chat-local"]').content;
 const STORE = "flop-testnet-chat-history-v1";
+const WALLET_SCHEME = "flop-testnet-wallet-scheme:";
 try {
  lang = localStorage.getItem("flop-did-chat-language") || "en";
  const saved = JSON.parse(localStorage.getItem(STORE) || "null");
@@ -313,6 +317,9 @@ function renderReceipts() {
 }
 function renderState(next) {
  state = next;
+ if (state.account && ["ed25519", "sr25519"].includes(state.account.type)) {
+  try { localStorage.setItem(WALLET_SCHEME + state.account.address, state.account.type); } catch {}
+ }
  $("author-did").textContent = state.author_did;
  $("quota").textContent = state.auth ? amount(state.auth.remaining_quota, lang, 4) : "—";
  $("expires").textContent = state.auth?.expires_at ? new Date(state.auth.expires_at).toLocaleString(lang, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "—";
@@ -437,12 +444,18 @@ $("sign-challenge").addEventListener("click", async () => {
   if (state.gateway_block === "ENROLLMENT_UNAVAILABLE") banner(formatError({error:state.gateway_block}));
   void refreshFaucet();
   renderMessages();
- } catch (error) { $("wallet-error").textContent = error?.message || formatError(error); $("wallet-error").hidden = false;
+ } catch (error) {
+  $("wallet-error").textContent = error?.error === "SIGNATURE_INVALID" ? t("walletSignatureHelp") : error?.message || formatError(error);
+  $("wallet-error").hidden = false;
   try { renderState(await (await fetch("/api/state")).json()); } catch {}
  }
 });
 function selectScheme() {
- $("key-type").value = accounts.find(a => a.address === $("account-select").value)?.type === "ed25519" ? "ed25519" : "sr25519";
+ const address = $("account-select").value;
+ let remembered;
+ try { remembered = localStorage.getItem(WALLET_SCHEME + address); } catch {}
+ const reported = accounts.find(account => account.address === address)?.type;
+ $("key-type").value = ["ed25519", "sr25519"].includes(remembered) ? remembered : reported === "ed25519" ? "ed25519" : "sr25519";
 }
 $("key-type").addEventListener("change", () => { challenge = null; $("challenge-section").hidden = true; });
 $("account-select").addEventListener("change", () => { selectScheme(); challenge = null; $("challenge-section").hidden = true; });

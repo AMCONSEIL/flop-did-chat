@@ -107,8 +107,8 @@ const bytes = new TextEncoder().encode(readFileSync(0,'utf8'));
 console.log(JSON.stringify({public:u8aToHex(key.publicKey), signature:'0x01'+u8aToHex(key.sign(u8aWrapBytes(bytes))).slice(2)}));
 """
         def sign(message):
-            return json.loads(subprocess.run(["node", "--input-type=module", "-e", js], input=message,
-                              capture_output=True, text=True, check=True, cwd=Path(__file__).resolve().parents[1]).stdout)
+            return json.loads(subprocess.run(["node", "--input-type=module", "-e", js], input=message.encode("utf-8"),
+                              capture_output=True, check=True, cwd=Path(__file__).resolve().parents[1]).stdout)
         account = identity(bytes.fromhex(sign("")["public"][2:]), "sr25519")
         chat = Chat(self.path.with_name("ledger.json"), FakeGateway(), expected_did=account["did"], clock=lambda:NOW)
         chat.catalog()

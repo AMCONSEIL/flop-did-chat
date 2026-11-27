@@ -29,11 +29,15 @@ SDK 0.13.1 exposes computeChannel.runDirectSession and its supported runtime lis
 
 The local run passed 44 Python and 18 Node tests. Two offline Chromium flows used a simulated Talisman account. One connected, read the closed faucet, changed language and received a mock gateway response. The other connected through the 404 fallback, signed a mock grant and verified the explorer link and duplicate-submission guard. Neither browser flow contacted a live miner. Read-only finalized storage at block 246599 also confirmed the miner activity, calibration and model registry fields used by preflight.
 
-## User acceptance still required
+## Windows user acceptance · November 27, 2026
 
-1. On Windows, run the installer and launcher. Connect the intended Talisman account and compare the public DID/address and signature scheme. Repeat with the other scheme. Check EN and FR.
-2. When the faucet is open and the account eligible, review one grant challenge. Compare the resulting transaction and finalized balance. A returned included status alone does not prove finality.
-3. Configure an operator-confirmed miner. Select its exact served model and review the quote for 1200 seconds, 0.05 FLOP escrow and 256 output tokens. Reject the first quote to confirm cancellation; then approve one bounded session if intended.
-4. Verify the reply, channel ID, settled Gn, amount and transaction hash against the explorer. Verify gateway enrollment and one gateway receipt when the public service enables enrollment.
+- All 44 Python tests and 18 Node tests passed on Windows. The Windows installer and launcher ran successfully.
+- An existing Ed25519 Technocore DID connected through Talisman. Edge with a simulated wallet verified the **Compte Talisman standard** and **DID Technocore importé** labels and the remembered account type after reload.
+- The live wallet balance and faucet status were read successfully. The gateway catalogue loaded, and enrollment HTTP 404 triggered the direct fallback. The chat verified an independent miner's signed `info-proof` and displayed a `forceOpen` quote of 0.05 FLOP escrow plus about 0.00844 FLOP in estimated opening fees.
+- Live `forceOpen` acceptance on `wss://testnet.flop.network/` awaits resolution of [FLOP #1775](https://github.com/flop-labs/network/issues/1775), which tracks public RPC finality lag and includes a separate report of a rejected mortal transaction. The Windows attempt remains unconfirmed, and its exact rejection reason is unknown.
 
-Public observations and offline results establish neither a completed Talisman session nor a Windows installation or live gateway enrollment.
+### Remaining live checks
+
+1. Connect a real sr25519 Talisman account. When the faucet is open and the account is eligible, verify one grant transaction and the finalized balance.
+2. Reconcile the original direct attempt before any new send. For a completed session, verify the reply, channel ID, settled Gn, amount and transaction hash against the explorer.
+3. Verify gateway enrollment and one gateway receipt once public enrollment opens.

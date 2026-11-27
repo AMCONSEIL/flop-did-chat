@@ -98,9 +98,9 @@
 <p data-i18n="walletExplanation">Allow your existing account, then review the message before signing.</p>
 <div id="wallet-step-select">
 <button id="load-accounts" class="button primary full"><svg><use href="#i-wallet"/></svg><span data-i18n="allowTalisman">Authorize Talisman</span></button>
-<p class="micro" data-i18n="connectionHelp">Select the account linked to your DID. The chat verifies its sr25519 or Ed25519 signature before accepting the connection.</p>
+<p class="micro" data-i18n="connectionHelp">Select the account to connect. This browser remembers its type after a successful sign-in.</p>
 <label class="field-label" for="account-select" data-i18n="selectAccount">Account</label><select id="account-select"><option data-i18n="accountsEmpty">No account loaded</option></select>
-<label class="field-label" for="key-type" data-i18n="keyType">Wallet signature scheme</label><select id="key-type"><option value="sr25519">sr25519</option><option value="ed25519">Ed25519</option></select>
+<label class="field-label" for="key-type" data-i18n="keyType">Account type</label><select id="key-type"><option value="sr25519" data-i18n="keyTypeStandard">Standard Talisman account (sr25519)</option><option value="ed25519" data-i18n="keyTypeDid">Imported Technocore DID (Ed25519)</option></select>
 <label class="field-label" for="did-input" data-i18n="didOptional">DID to verify (optional)</label><input id="did-input" placeholder="did:key:z6Mk…" autocomplete="off">
 <button id="prepare-challenge" class="button full" disabled data-i18n="reviewChallenge">Review the signing message</button>
 </div>
