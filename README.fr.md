@@ -1,99 +1,35 @@
-# FLOP DID Chat
+# FLOP DID Chat 0.3.0 · Testnet
 
-**Version locale de test 0.2.2 · Français / English · Talisman · Ed25519**
-
-Chat local pour FLOP Devnet. Le gateway est utilisé en priorité, avec une session directe sur un mineur choisi en cas de blocage confirmé.
-
-**Compatibilité actuelle (8 novembre 2026).** La version `0.2.2` épingle le SDK npm officiel `0.5.1`, dont la liste de compatibilité non modifiée accepte explicitement le runtime Devnet actuel `1014014`. Les versions non prises en charge, l’identité réseau et la dénomination restent contrôlées. Les vérifications hors ligne et en lecture seule ne valident pas une session payée : un nouveau test utilisateur borné avec Talisman reste nécessaire. Le succès NurseryPool ci-dessous est historique. Un essai Standard séparé ne valide pas le parcours force-open existant de ce chat. Voir le [guide officiel de mise à jour](https://docs.flop.network/docs/upgrade).
-
-> **Validation Devnet.** Le parcours gateway de la 0.1.0 a rencontré un HTTP 429 avec un reçu libéré. Avec un accès gateway expiré, FLOP DID Chat 0.2.0 a reçu une réponse vérifiée de NurseryPool en direct. La [transaction finalisée](https://explorer.devnet.flop.network/transactions/0x510061602e7524880913177efe61a2cb48171117058c00904db708a0494ee0b6) atteste le paiement de 0,198 FLOP Devnet au mineur. Cette intégration reste expérimentale. Voir [la validation](VALIDATION.md) et [l’incident gateway](https://github.com/flop-labs/network/issues/31).
->
-> Les retours de la communauté sont bienvenus. Un test utilisateur réel reste nécessaire avant de s’appuyer sur ce client expérimental.
-
-DID auteur : **did:key:z6Mkt3DNtpGBNh1KHYwLQEk6QtCcJ7vVaRPze1SU7MyhFMVD**
-
-[English](README.md) · [Identité](IDENTITY.md) · [Sécurité et limites](SECURITY.md)
-
-## Avant de commencer : votre DID dans Talisman
-
-**Il faut un compte Talisman utilisant la même clé Ed25519 que votre identité `did:key` existante.** Installer Talisman ou créer un nouveau wallet ne le relie pas automatiquement à un DID existant.
-
-Pour préparer ce compte, suivez notre précédent projet : **[did-to-talisman — importer votre DID existant dans Talisman](https://github.com/AMCONSEIL/did-to-talisman)**. Il contient le tutoriel français/anglais et l’outil local de conversion d’une sauvegarde PEM chiffrée compatible. Si ce compte est déjà importé, utilisez-le directement.
-
-Chaque utilisateur connecte **son propre DID et son propre wallet**. Le DID auteur affiché dans ce dépôt attribue la contribution ; ce n’est pas le compte que les autres utilisateurs doivent connecter.
+Discutez avec un modèle du Testnet via le gateway public ou un mineur de votre choix. Talisman conserve la clé de votre compte sr25519 ou Ed25519. L’interface française et anglaise tourne sur votre ordinateur. Les tests hors ligne et les lectures publiques sont validés. Un premier crédit et un premier chat réglé avec un vrai compte Talisman restent à valider. [Validation](VALIDATION.md) · [English](README.md) · [DID auteur](IDENTITY.md)
 
 ## Démarrer
 
-1. Installer Python 3.11 ou plus et l’extension Talisman depuis son site officiel.
-2. Lancer **INSTALLER_WINDOWS.cmd**, puis **LANCER.cmd**.
-3. Ouvrir **http://127.0.0.1:50510/** dans le navigateur avec Talisman.
-4. Cliquer **Connecter Talisman**, autoriser son compte **Ed25519 existant**, puis lire le challenge officiel.
-5. Vérifier le compte et signer dans Talisman. Aucun transfert n’est demandé par cette connexion.
-6. Rédiger un message et cliquer Envoyer. Aucun prompt ne part à la connexion.
+Installez Python 3.11 ou ultérieur, Node.js 24 avec npm et l’extension Talisman. Sous Windows, exécutez **INSTALLER_WINDOWS.cmd**, puis **LANCER.cmd**. Sous Linux ou macOS, lancez ces commandes dans le dépôt.
 
-Pour préparer un DID existant dans Talisman : [did-to-talisman](https://github.com/AMCONSEIL/did-to-talisman).
-Le DID public seul ne récupère pas une clé perdue. Ne jamais fournir PEM, JSON de wallet, seed ou mot de passe à ce chat.
+~~~sh
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install --require-hashes --only-binary=:all: -r requirements.lock.txt
+npm ci --ignore-scripts --no-audit --no-fund
+python flop_chat.py --open-browser
+~~~
 
-Linux/macOS : Python 3.11+, créer un environnement virtuel, installer les distributions épinglées du fichier de requirements puis lancer **python flop_chat.py**. L’extension Talisman doit être dans le navigateur. Ces plateformes ne sont pas recettées.
+Ouvrez l’adresse locale affichée dans le navigateur équipé de Talisman. Cliquez sur **Connecter Talisman**, choisissez le compte et son type de signature, relisez le défi puis signez-le. Pour un DID historique, sélectionnez Ed25519 si le type indiqué par l’extension est incorrect. Les options `--expected-address <SS58>` et `--expected-did <did:key:…>` peuvent verrouiller l’identité, ensemble ou séparément. [Guide d’import d’un DID existant](https://github.com/AMCONSEIL/did-to-talisman)
 
-## Repli vers un mineur
+## Obtenir des FLOP de test
 
-Le mode direct nécessite **Node.js 22+**. Dans le dossier du chat, installez ses dépendances épinglées avec `npm ci --ignore-scripts --no-audit --no-fund`, puis relancez le serveur. Le gateway fonctionne aussi avec la seule installation Python.
+**Vérifier le solde et le faucet** affiche le solde libre au dernier bloc finalisé, le budget restant et la condition de dépense. Lorsque le robinet est ouvert, **Réclamer +10 FLOP** demande une signature de message à Talisman. Le plafond est de 10 FLOP par période glissante de 24 heures. Un crédit accepté affiche son statut et un lien vers sa transaction. Un HTTP 429 affiche le délai annoncé. Si le faucet répond `agent_spend_missing`, une dépense réglée sur le réseau débloque le crédit suivant. Une réponse perdue laisse le crédit en attente sur disque et bloque le double envoi. [Explorateur Testnet](https://testnet.flopscan.io)
 
-Le chat tente le gateway si l’accès est disponible. Si l’accès est bloqué avant l’envoi, ou si un refus HTTP 429/503 correspond à un reçu libéré sans paiement ni réponse, le chat propose un mineur pour ce message. Un résultat incertain demande une vérification du reçu. Le client affiche le mineur, le modèle, la réserve de 0,2 FLOP de test et les frais d’ouverture estimés avant la signature Talisman. Le mode direct utilise le solde Devnet du compte. Les frais d’ouverture peuvent rester dus si la réserve est remboursée. Le budget local prend en compte jusqu’à 0,02 FLOP de frais estimés par ouverture.
+## Envoyer un message
 
-Le mode direct est limité à Qwen2.5-0.5B et 48 tokens de sortie. Le contexte de la conversation est envoyé au mineur choisi. AntJu et NurseryPool sont proposés. AntJu utilise un tunnel HTTPS temporaire. Si l’opérateur change son URL, renseignez la nouvelle URL HTTPS localement en gardant la même adresse AntJu. Pour ajouter un opérateur qui accepte les sessions directes, créez `.local/direct-miners.json` avec une liste d’objets `{"name":"Nom", "address":"SS58_DU_MINEUR", "endpoint":"https://mineur.example"}`. Vérifiez l’adresse et l’origine HTTPS auprès de l’opérateur avant de l’ajouter. Redémarrez le serveur pour charger cette liste.
+**Gateway.** Le menu affiche le catalogue texte en direct. Le 27 novembre, l’inscription répondait HTTP 404. La connexion locale, le faucet et le mode direct restent utilisables. Lorsque l’inscription ouvrira, le chat contrôlera le défi, le modèle autorisé, le quota et les reçus avant envoi. L’admission d’un mineur nécessite un reçu qui l’identifie. [Catalogue public](https://gateway.testnet.flop.network/v1/models)
 
-Un canal au résultat incertain bloque les envois suivants. **Vérifier les reçus** relit son état finalisé et cherche l’événement de règlement ou de remboursement par lots de 64 blocs. Un canal absent ou un événement introuvable reste à réconcilier. Les actions de récupération qui écrivent sur la chaîne sont distinctes et manuelles.
+**Direct.** Demandez à l’opérateur du mineur son adresse Testnet et son origine HTTPS. Créez `.local/direct-miners.json` avec un tableau de cette forme, remplacez les valeurs d’exemple et relancez le chat.
 
-## Modèles et limites
+~~~json
+[{"name":"Mon mineur","address":"REMPLACER_PAR_SS58_TESTNET","endpoint":"https://miner.example.org"}]
+~~~
 
-Le catalogue est chargé depuis le gateway public. Le modèle doit aussi être autorisé par l’accès reçu : les autres sont désactivés, pas débloqués artificiellement. Au contrôle initial du 3 novembre 2026, un seul modèle était annoncé : Qwen2.5-0.5B.
+Vous pouvez aussi renseigner `enclaveKey` avec la clé de session confirmée par l’opérateur (64 caractères hexadécimaux minuscules). Dans **Réglages**, choisissez **Direct**, puis un modèle du catalogue ou son identifiant exact en minuscules, par exemple `qwen/qwen3-14b`. Envoyez le message, sélectionnez le mineur, ajustez la réserve et cliquez sur **Voir les coûts**. L’application vérifie une preuve de disponibilité signée sur un défi neuf, la version du worker et l’identité du modèle au bloc finalisé avant de demander la signature d’ouverture.
 
-Par défaut : **48 tokens de sortie, plafond de 0,9 FLOP par envoi et budget local de 0,9 FLOP pour cette exécution du serveur**. Dans Réglages, l’utilisateur choisit ses plafonds par message et pour le chat, sans maximum arbitraire fixé par cette application. Les montants doivent être positifs et finis ; le plafond par message doit tenir dans le plafond total. Le serveur applique les plafonds choisis. La réponse peut aller jusqu’à 1 024 tokens dans les limites annoncées du modèle. Ces réglages ne créent aucun crédit serveur.
-
-L’historique de la conversation réussi fait partie du contexte envoyé et peut augmenter le coût. Maximum local : 40 messages et 30 000 caractères de contexte. Pas d’outils autonomes, téléversements ou appels automatiques.
-
-## Comprendre les compteurs
-
-- **Quota API** : valeur fournie par FLOP, affichée sans la convertir en solde de wallet. Ce n’est pas le solde natif du faucet.
-- **Réservé** : réservation courante indiquée par les reçus non terminaux.
-- **Réglé** : montants des reçus dont l’état est settled. Le montant exact en unités de base est conservé quand disponible ; un montant historique flottant reste une observation du gateway.
-- **Tokens** : compteurs renvoyés dans les réponses obtenues par cette application.
-- **Utilisé ou en attente / limite** : règlements connus et plafonds conservateurs des appels encore incertains, pour l’exécution courante du serveur.
-
-Une valeur absente reste **inconnue**. Un reçu released signifie que la réservation est libérée ; settled_spend:null n’est pas converti en zéro. Les compteurs de cette application ne prétendent pas couvrir tout l’historique du compte.
-
-Un reçu du gateway n’est **pas une vérification indépendante de finalité sur chaîne**. Un canal ou événement peut couvrir plusieurs requêtes : il n’est pas présenté comme une transaction de paiement individuelle.
-
-## Erreurs, reprise et identité
-
-Le request_id et son empreinte sont sauvegardés **avant** l’envoi. Un second clic avec le même identifiant ne soumet jamais une nouvelle inférence. Un timeout, reçu absent ou résultat réservé bloque l’envoi suivant jusqu’à réconciliation.
-
-**Actualiser / Vérifier les reçus** ne soumet que des lectures. Aucun retry d’inférence automatique. Un 429/503 impose un délai local d’au moins 60 secondes, ou 10 minutes si le serveur n’indique aucun délai. Ne pas créer un autre wallet ni réclamer un nouveau faucet pour contourner une limite.
-
-Une reconnexion du même compte change éventuellement le bearer, **jamais l’allocation ni son expiration**. Après expiration, seule une procédure officiellement autorisée pour le même compte peut restaurer l’accès.
-
-Les clés privées restent dans Talisman. Le bearer reste en mémoire du serveur local. Changer de compte est refusé tant qu’un appel est incertain. Le serveur vérifie la signature Ed25519, le DID, le challenge, l’adresse et le genesis du devnet.
-
-Lancement avec verrou d’identité personnel, si souhaité : **python flop_chat.py --expected-did VOTRE_DID_PUBLIC**.
-Pour reprendre un reçu existant : **--reconcile-request IDENTIFIANT_PUBLIC**. Un reçu introuvable bloque la reprise.
-
-## Données locales et arrêt
-
-Le navigateur conserve les conversations en mémoire par défaut. **Conserver l’historique ici** active un stockage en clair des prompts/réponses dans ce navigateur : option à réserver à son ordinateur privé. Aucun bearer/signature de connexion n’y est enregistré. Effacer les conversations ne supprime pas les reçus ni le travail distant.
-
-Le dossier **.local/** contient un journal minimal de requêtes : identité publique, IDs, empreintes non réversibles du contenu, plafonds, compteurs et reçus. Aucun prompt, réponse, mot de passe, signature de connexion ou bearer n’y est écrit. Ne pas le supprimer pour débloquer un appel incertain. Les empreintes de contenu ne sont pas une anonymisation garantie pour des prompts prévisibles.
-
-Fermer le serveur efface son bearer en mémoire ; le budget local est propre à cette exécution. Les requêtes et reçus persistés servent à réconcilier après redémarrage. Une seconde instance sur le même dossier est refusée. Le service reste lié à 127.0.0.1 ; ne pas l’exposer sur Internet.
-
-## Validation
-
-Tests hors ligne : **python -m unittest discover -s tests -v** et **node --test tests/core.test.mjs**.
-Les fixtures cryptographiques sont publiques (RFC8032), jamais une clé utilisateur. Aucun fonds n’est engagé par ces tests.
-
-**Le parcours direct signé via NurseryPool est validé sur le Devnet.** Un essai réussi via le gateway et une conversation à plusieurs tours restent à valider. Cette version n’a pas encore de signature d’attribution propre : le DID d’auteur est une référence publique, pas une preuve de version signée.
-
-Devnet : aucune valeur monétaire, récompense ou poids d’airdrop. Application communautaire indépendante ; aucune affiliation officielle revendiquée.
-
-Le compteur de limite locale et les plafonds se trouvent dans **Réglages**, sous la zone de saisie. Le plafond initial de 0,9 FLOP est un choix de précaution de cette application pour le premier test, pas une exigence de FLOP.
+Vérifiez l’origine HTTPS, le modèle, le canal et le coût. Par défaut, la réserve vaut 0,05 FLOP, la réponse est limitée à 256 tokens (1024 maximum) et la durée du canal est de 1200 secondes. Le plafond local des frais d’ouverture vaut 0,02 FLOP. Talisman signe `computeChannel.forceOpen` pour un tour. Le SDK utilise une clé éphémère pour la session et le mineur soumet le règlement coopératif. **Vérifier les reçus** recherche à finalité le canal, le hash de règlement, les montants et les Gn réglés. La réponse vérifiée peut arriver avant le règlement. [Sécurité et reprise](SECURITY.md)

@@ -8,10 +8,11 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
-from direct_chat import ANTJU, NURSERYPOOL, configured_miners
-from flop_chat import Chat, ChatError, parse_identity
+from direct_chat import configured_miners
+from flop_chat import Chat, ChatError, identity, parse_identity
 from test_chat import FakeGateway, IDENTITY, KEY, MODEL, NOW, receipt
 
+MINER = {"name": "Offline miner", "address": identity(bytes(range(32)))["address"], "endpoint": "https://miner.example.org"}
 REQUEST = "chat-" + "a" * 32
 CHANNEL = "0x" + "b" * 64
 TX = "0x" + "c" * 64
@@ -26,8 +27,10 @@ class DirectTests(unittest.TestCase):
         self.chat = Chat(self.path, self.gateway, expected_did=IDENTITY["did"], clock=lambda: NOW)
         self.direct = self.chat.direct
         self.direct.available = True
+        self.assertEqual(self.direct.miners, [])
+        self.direct.miners = [MINER]
         self.body = {"request_id": REQUEST, "model": MODEL, "messages": [{"role": "user", "content": "Fixture"}]}
-        self.choice = {"request_id": REQUEST, "miner": NURSERYPOOL["address"]}
+        self.choice = {"request_id": REQUEST, "miner": MINER["address"]}
         self.sign()
 
     def sign(self):
@@ -37,13 +40,28 @@ class DirectTests(unittest.TestCase):
     def paid_calls(self):
         return [call for call in self.gateway.calls if call[0] == "/chat/completions"]
 
-    def test_antju_is_listed_first_and_its_tunnel_can_be_updated_locally(self):
-        self.assertEqual(self.direct.miners, [ANTJU, NURSERYPOOL])
+    def test_only_explicit_https_miners_are_available(self):
         path = self.path.with_name("direct-miners.json")
-        endpoint = "https://direct.antju.example"
-        path.write_text(json.dumps([{**ANTJU, "endpoint": endpoint}]), encoding="utf-8")
-        self.assertEqual(configured_miners(path, parse_identity, ChatError),
-                         [{**ANTJU, "endpoint": endpoint}, NURSERYPOOL])
+        rows = [{**MINER, "endpoint": url} for url in ("http://miner.example.org", "https://127.0.0.1", "https://x.local", "https://[::1]", "https://user@miner.example.org")]
+        path.write_text(json.dumps(rows))
+        self.assertEqual(configured_miners(path, parse_identity, ChatError), [])
+        path.write_text(json.dumps(rows + [MINER, MINER]))
+        self.assertEqual(configured_miners(path, parse_identity, ChatError), [MINER])
+
+    def test_manual_direct_quote_uses_requested_escrow_and_token_cap(self):
+        body = {**self.body, "route":"direct", "max_tokens":1024}
+        self.assertTrue(self.chat.chat(body)["direct_offer"])
+        with patch("direct_chat.threading.Thread") as worker:
+            self.direct.prepare({**self.choice, "escrow":"0.072"})
+        params = worker.call_args.kwargs["args"][1]
+        self.assertEqual((params["escrow"], params["duration"], params["maxTokens"]),
+                         ("72000000000000000", 1200, 1024))
+        self.assertEqual(self.paid_calls(), [])
+
+    def test_bad_direct_slug_does_not_fall_through_to_gateway(self):
+        with self.assertRaisesRegex(ChatError, "DIRECT_NOT_ALLOWED"):
+            self.chat.chat({**self.body, "route":"direct", "model":MODEL.upper()})
+        self.assertEqual(self.paid_calls(), [])
 
     def test_gateway_success_does_not_offer_direct(self):
         result = self.chat.chat(self.body)
@@ -171,8 +189,8 @@ class DirectTests(unittest.TestCase):
             self.direct.submit({"id": job["id"], "signature": signature})
         job["phase"] = "reconcile"
         self.direct.apply_final(job["row"], {"phase": "settled", "tx": TX,
-                                            "miner_paid_raw": "198000000000000000",
-                                            "burned_raw": "2000000000000000"})
+                                            "miner_paid_raw": "48000000000000000",
+                                            "aggregate_gn": "27", "burned_raw": "2000000000000000"})
         self.assertEqual(self.chat.ledger.rows[job["id"]]["terminal_event"], TX)
-        self.assertEqual(str(self.chat.session_commitment()), "0.22")
+        self.assertEqual(str(self.chat.session_commitment()), "0.07")
         self.assertIsNone(self.chat.snapshot()["direct"]["request_id"])

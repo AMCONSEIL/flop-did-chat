@@ -40,12 +40,12 @@
 <span id="model-access" class="micro"></span>
 </div>
 <div class="topbar-actions">
-<span class="network-pill"><span class="dot"></span>FLOP devnet</span>
+<span class="network-pill"><span class="dot"></span>FLOP testnet</span>
 <button id="lang" class="button language" aria-label="Passer en français">FR</button>
 <button id="connect" class="button wallet"><svg><use href="#i-wallet"/></svg><span id="connect-label" data-i18n="connect">Connect Talisman</span></button>
 </div>
 </header>
-<div class="network-note"><span data-i18n="devnet">Devnet · test tokens with no monetary value.</span><span class="local-indicator" data-i18n="local">Local application</span></div>
+<div class="network-note"><span data-i18n="testnet">Testnet · test tokens with no monetary value.</span><span class="local-indicator" data-i18n="local">Local application</span></div>
 <div id="banner" class="banner" role="status" aria-live="polite" hidden></div>
 <section class="chat-area" aria-label="Chat">
 <div id="welcome" class="welcome">
@@ -58,7 +58,9 @@
 <footer class="composer-area">
 <div id="reconcile-note" class="reconcile-note" hidden><span data-i18n="unresolved">A request still needs reconciliation. Check its receipt before sending another.</span><button id="reconcile" class="text-button" data-i18n="checkReceipt">Check receipts</button></div>
 <section id="direct-choice" class="settings" hidden aria-labelledby="direct-title">
-<div class="settings-note"><strong id="direct-title" data-i18n="directTitle">Direct session</strong><p class="micro" data-i18n="directInfo">The gateway is unavailable for this message. The direct session uses your devnet wallet balance.</p></div>
+<div class="settings-note"><strong id="direct-title" data-i18n="directTitle">Direct session</strong><p class="micro" data-i18n="directInfo">The direct session uses your testnet wallet balance.</p></div>
+<label><span data-i18n="directReserve">Channel escrow</span> (FLOP)<input id="escrow" inputmode="decimal" value="0.05"></label>
+<p id="miners-empty" class="micro" data-i18n="minersEmpty">Configure a miner in .local/direct-miners.json and restart the chat.</p>
 <label><span data-i18n="directMiner">Miner</span><select id="direct-miner"></select></label>
 <button id="direct-prepare" class="button" type="button" data-i18n="directPrepare">Review costs</button>
 </section>
@@ -69,7 +71,9 @@
 </form>
 <div id="settings" class="settings" hidden>
 <div class="settings-note"><div class="small-row"><span data-i18n="sessionBudget">Used or pending / your cap</span><strong id="budget-value">0 / 0.9 FLOP</strong></div><p class="micro" data-i18n="budgetInfo">This is an app setting, not a FLOP rule. 0.9 FLOP is suggested for the first test; you can adjust this limit below. The counter includes known costs and pending calls since server startup.</p></div>
-<label><span data-i18n="responseLength">Maximum output tokens</span><select id="max-tokens"><option>48</option><option>128</option><option>256</option><option>512</option><option>1024</option></select></label>
+<label><span data-i18n="route">Route</span><select id="route"><option value="gateway">Gateway</option><option value="direct">Direct</option></select></label>
+<label id="custom-model" hidden><span data-i18n="directSlug">Direct model (optional)</span><input id="direct-model" placeholder="qwen/qwen3-8b"></label>
+<label><span data-i18n="responseLength">Maximum output tokens</span><select id="max-tokens"><option>48</option><option>128</option><option selected>256</option><option>512</option><option>1024</option></select></label>
 <label><span data-i18n="requestLimit">Your per-request cap (FLOP)</span><input id="request-limit" type="number" min="0" step="any" value="0.9"></label>
 <label><span data-i18n="sessionLimit">Your cap for this chat (FLOP)</span><input id="session-limit" type="number" min="0" step="any" value="0.9"></label>
 <button id="apply-limits" class="button" type="button" data-i18n="applyLimits">Apply</button>
@@ -80,6 +84,7 @@
 <aside class="insights">
 <div class="insights-heading"><h2 data-i18n="usageTitle">Usage</h2><button id="refresh" class="icon-button" aria-label="Refresh"><svg><use href="#i-refresh"/></svg></button></div>
 <div class="quota-card"><div class="overline" data-i18n="apiQuota">API quota remaining</div><div id="quota" class="quota-number">—</div><p class="micro" data-i18n="quotaUnits">Reported by FLOP. This is not your wallet balance.</p><div class="quota-divider"></div><div class="small-row"><span data-i18n="expires">Access expires</span><span id="expires">—</span></div></div>
+<section class="quota-card"><strong>Faucet · Testnet</strong><p id="faucet-status" class="micro" role="status"></p><button id="faucet-refresh" class="text-button" data-i18n="fRefresh">Check balance and faucet</button><button id="faucet-claim" class="button" disabled data-i18n="fClaim">Claim +10 FLOP</button></section>
 <div class="usage-metrics"><div><span data-i18n="settled">Confirmed cost (receipt)</span><strong id="settled">—</strong></div><div><span data-i18n="reserved">Reserved</span><strong id="reserved">—</strong></div><div><span data-i18n="tokens">Tokens used</span><strong id="tokens">—</strong></div></div>
 <p class="micro usage-scope" data-i18n="usageScope">Requests sent by this chat only. “—”: unknown amount.</p>
 <div class="receipt-heading"><h3 data-i18n="activity">Receipts</h3><span id="receipt-count" class="count">0</span></div>
@@ -93,8 +98,9 @@
 <p data-i18n="walletExplanation">Allow your existing account, then review the message before signing.</p>
 <div id="wallet-step-select">
 <button id="load-accounts" class="button primary full"><svg><use href="#i-wallet"/></svg><span data-i18n="allowTalisman">Authorize Talisman</span></button>
-<p class="micro" data-i18n="connectionHelp">Select the account linked to your DID. The chat verifies its Ed25519 signature before accepting the connection.</p>
+<p class="micro" data-i18n="connectionHelp">Select the account to connect. This browser remembers its type after a successful sign-in.</p>
 <label class="field-label" for="account-select" data-i18n="selectAccount">Account</label><select id="account-select"><option data-i18n="accountsEmpty">No account loaded</option></select>
+<label class="field-label" for="key-type" data-i18n="keyType">Account type</label><select id="key-type"><option value="sr25519" data-i18n="keyTypeStandard">Standard Talisman account (sr25519)</option><option value="ed25519" data-i18n="keyTypeDid">Imported Technocore DID (Ed25519)</option></select>
 <label class="field-label" for="did-input" data-i18n="didOptional">DID to verify (optional)</label><input id="did-input" placeholder="did:key:z6Mk…" autocomplete="off">
 <button id="prepare-challenge" class="button full" disabled data-i18n="reviewChallenge">Review the signing message</button>
 </div>

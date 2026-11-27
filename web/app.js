@@ -1,9 +1,20 @@
 import { short, rawFlop, amount, metrics, contextFor, canSend, safeConversationStore, substrateCandidates } from "./core.js";
 const $ = id => document.getElementById(id);
 const TEXT = {
+ keyType: ["Type de compte", "Account type"],
+ keyTypeStandard: ["Compte Talisman standard (sr25519)", "Standard Talisman account (sr25519)"],
+ keyTypeDid: ["DID Technocore importé (Ed25519)", "Imported Technocore DID (Ed25519)"],
+ walletSignatureHelp: ["La signature n’a pas pu être vérifiée. Pour un DID Technocore importé, choisissez l’option Ed25519, puis affichez un nouveau message à signer.", "The signature could not be verified. For an imported Technocore DID, select the Ed25519 option and review a new signing message."],
+ route: ["Parcours", "Route"], directSlug: ["Modèle direct (facultatif)", "Direct model (optional)"],
+ minersEmpty: ["Ajoutez un mineur dans .local/direct-miners.json puis relancez le chat.", "Configure a miner in .local/direct-miners.json and restart the chat."],
+ fRefresh: ["Vérifier le solde et le faucet", "Check balance and faucet"], fClaim: ["Réclamer +10 FLOP", "Claim +10 FLOP"],
+ fBalance: ["Solde libre finalisé", "Finalized free balance"], fRemaining: ["Budget restant", "Remaining budget"],
+ fRollover: ["Le prochain crédit exige une dépense réglée.", "The next grant requires one settled spend."],
+ fWait: ["Réessayer dans", "Retry in"], fUnknown: ["Résultat incertain. Vérifiez le crédit sur la chaîne. Le double envoi est bloqué.", "Outcome unknown. Check the transfer on-chain. Duplicate submission is blocked."],
+ fTx: ["Voir la transaction", "View transaction"], fSpend: ["Une dépense réglée sur le réseau débloque le prochain crédit.", "One settled spend on the network unlocks the next grant."],
  close: ["Fermer", "Close"],
  directTitle: ["Session directe", "Direct session"],
- directInfo: ["Le gateway est bloqué pour ce message. Le direct utilise le solde de votre compte Devnet et transmet le contexte affiché au mineur choisi.", "The gateway is unavailable for this message. Direct uses your devnet wallet balance and shares the displayed conversation context with the selected miner."],
+ directInfo: ["Le direct utilise le solde de votre compte Testnet et transmet le contexte affiché au mineur choisi.", "Direct uses your Testnet wallet balance and shares the displayed conversation context with the selected miner."],
  directMiner: ["Mineur", "Miner"],
  directPrepare: ["Voir les coûts", "Review costs"],
  directChecking: ["Vérification du mineur et calcul des frais…", "Checking the miner and estimating fees…"],
@@ -17,14 +28,14 @@ const TEXT = {
  directReconcile: ["Vérifiez le canal avant un nouvel envoi.", "Check the channel before another send."],
  directStopped: ["Préparation interrompue avant envoi. Vérifiez la disponibilité du mineur, votre solde et les frais.", "Preparation stopped before submission. Check miner availability, your balance and fees."],
  directRuntimeUnsupported: ["Préparation arrêtée avant envoi : la version réseau {runtime} n’est pas prise en charge par le SDK installé. Une version compatible du SDK est nécessaire. Aucune transaction n’a été soumise.", "Preparation stopped before submission: network runtime {runtime} is unsupported by the installed SDK. A compatible SDK release is required. No transaction was submitted."],
- directNetworkMismatch: ["Préparation arrêtée avant envoi : le réseau ou l’unité FLOP ne correspond pas au Devnet attendu. Aucune transaction n’a été soumise.", "Preparation stopped before submission: unexpected network or FLOP denomination. No transaction was submitted."],
+ directNetworkMismatch: ["Préparation arrêtée avant envoi : le réseau ou l’unité FLOP ne correspond pas au Testnet attendu. Aucune transaction n’a été soumise.", "Preparation stopped before submission: unexpected network or FLOP denomination. No transaction was submitted."],
  directReserve: ["Réserve du canal", "Channel escrow"],
  directFee: ["Frais d’ouverture estimés", "Estimated opening fee"],
  directTotal: ["Total estimé", "Estimated total"],
  directFeeCap: ["Plafond accepté pour l’estimation des frais", "Accepted fee estimate ceiling"],
  directExplorer: ["Voir le règlement sur l’explorateur", "View settlement in the explorer"],
  directLocalLogin: ["Compte vérifié. Gateway indisponible. Le chat proposera une session directe à l’envoi.", "Account verified. Gateway unavailable. The chat will offer a direct session when you send."],
-connectionHelp:["Sélectionnez le compte lié à votre DID. Le chat vérifie sa signature Ed25519 avant de valider la connexion.","Select the account linked to your DID. The chat verifies its Ed25519 signature before accepting the connection."],
+connectionHelp:["Sélectionnez le compte à connecter. Le type est mémorisé dans ce navigateur après une connexion réussie.","Select the account to connect. This browser remembers its type after a successful sign-in."],
 settingsLabel:["Réglages","Settings"],
 noCompatibleAccounts:["Aucun compte Substrate compatible partagé. Dans Talisman, autorisez le compte existant lié à votre DID.","No compatible Substrate account shared. In Talisman, allow the existing account linked to your DID."],
 accountsEmpty:["Aucun compte chargé","No account loaded"],
@@ -44,7 +55,7 @@ author:["DID auteur","Author DID"],
 model:["Modèle","Model"],
 loadingModels:["Chargement du catalogue…","Loading model catalog…"],
 connect:["Connecter Talisman","Connect Talisman"],
-devnet:["Devnet · jetons de test sans valeur monétaire.","Devnet · test tokens with no monetary value."],
+testnet:["Testnet · jetons de test sans valeur monétaire.","Testnet · test tokens with no monetary value."],
 local:["Application locale","Local application"],
 welcomeTitle:["FLOP Chat","FLOP Chat"],
 welcomeCopy:["Connectez Talisman pour envoyer un message.","Connect Talisman to send a message."],
@@ -115,6 +126,16 @@ seconds:["s","s"],
 keepKey:["L’accès API reste uniquement en mémoire du serveur local.","API access stays only in the local server’s memory."]
 };
 const ERRORS = {
+ ENROLLMENT_UNAVAILABLE: ["Le gateway Testnet ne propose pas encore l’inscription (HTTP 404). Vous pouvez choisir le mode direct.", "Testnet gateway enrollment is unavailable (HTTP 404). You can choose direct mode."],
+ DIRECT_SELECTED: ["Choisissez le mineur et vérifiez les coûts.", "Select a miner and review the costs."],
+ EXPECTED_ADDRESS_MISMATCH: ["Adresse différente de celle attendue.", "Address differs from the expected address."],
+ FAUCET_UNKNOWN: TEXT.fUnknown, FAUCET_CLOSED: ["Robinet fermé.", "Faucet closed."],
+ FAUCET_WAIT: ["Le délai du faucet est encore actif.", "The faucet cooldown is still active."],
+ FAUCET_NETWORK_INVALID: ["Réponse du faucet incompatible avec ce Testnet.", "Faucet response does not match this Testnet."],
+ FAUCET_CHALLENGE_EXPIRED: ["Le défi a expiré. Actualisez le statut du crédit.", "Challenge expired. Refresh the grant status."],
+ AMOUNT_INVALID: ["Entrez un montant valide en FLOP.", "Enter a valid FLOP amount."],
+ WALLET_VERIFIER_UNAVAILABLE: ["Vérificateur local indisponible. Vérifiez Node.js.", "Local verifier unavailable. Check Node.js."],
+ FAUCET_UNAVAILABLE: ["Faucet inaccessible.", "Faucet unavailable."],
  DIRECT_NOT_ALLOWED: ["Ce message n’est pas éligible au direct.", "This message is not eligible for direct mode."],
  DIRECT_MINER_INVALID: ["Choisissez un mineur distinct du compte client.", "Choose a miner different from the client account."],
  DIRECT_PREVIEW_EXPIRED: ["L’estimation a expiré. Recommencez la préparation.", "The quote expired. Prepare it again."],
@@ -132,7 +153,7 @@ MODEL_NOT_AVAILABLE:["Le modèle autorisé n’est pas actuellement annoncé par
 CHALLENGE_INVALID:["Le message de connexion ne correspond pas au réseau ou au compte attendu. Ne le signez pas.","The login message does not match the expected network or account. Do not sign it."],
 EXPECTED_DID_MISMATCH:["Ce compte ne correspond pas au DID personnel attendu.","This account does not match the expected personal DID."],
 DID_MISMATCH:["Le DID ne correspond pas à la clé publique du compte choisi.","The DID does not match the selected account’s public key."],
-SIGNATURE_INVALID:["La signature Ed25519 ne correspond pas au message et au compte.","The Ed25519 signature does not match the message and account."],
+SIGNATURE_INVALID:["La signature Talisman ne correspond pas au message et au compte.","The Talisman signature does not match the message and account."],
 CONNECT_REQUIRED:["Connectez ou reconnectez le même compte avec Talisman.","Connect or reconnect the same account with Talisman."],
 devnet_enrollment_expired:["Accès gateway expiré. Le chat peut proposer une session directe.","Gateway access expired. The chat can offer a direct session."],
 devnet_allowance_exhausted:["L’allocation de ce compte est épuisée. Une reconnexion ne la renouvelle pas.","This account’s allowance is exhausted. Reconnecting does not renew it."],
@@ -148,9 +169,10 @@ ED25519_REQUIRED:["Sélectionnez le compte Ed25519 lié à votre DID.","Select t
 };
 let lang = "en", state = null, busy = false, extension = null, challenge = null, accounts = [];
 let directPoll;
-let conversations = [], activeId = null, requestLimit = "0.9", maxTokens = 48;
+let conversations = [], activeId = null, requestLimit = "0.9", maxTokens = 256;
 const csrf = document.querySelector('meta[name="chat-local"]').content;
-const STORE = "flop-did-chat-history-v1";
+const STORE = "flop-testnet-chat-history-v1";
+const WALLET_SCHEME = "flop-testnet-wallet-scheme:";
 try {
  lang = localStorage.getItem("flop-did-chat-language") || "en";
  const saved = JSON.parse(localStorage.getItem(STORE) || "null");
@@ -165,7 +187,7 @@ function formatError(error) {
  const code = error?.error || error?.code || "LOCAL_ERROR";
  const translated = ERRORS[code]?.[lang === "fr" ? 0 : 1];
  const detail = typeof error?.detail === "string" ? error.detail : "";
- return (translated || code) + (detail ? " — " + detail : "");
+ return (translated || code) + (detail ? " — " + detail : "") + (error?.retry_after ? " · " + t("fWait") + " " + error.retry_after + " s" : "");
 }
 function el(tag, className, text) {
  const element = document.createElement(tag);
@@ -280,7 +302,7 @@ function renderReceipts() {
    summary.append(el("div", "", t("directTitle") + (row.chain_state ? " · " + row.chain_state : "")));
    if (/^0x[0-9a-f]{64}$/.test(row.terminal_event)) {
     const link = el("a", "", t("directExplorer"));
-    link.href = "https://explorer.devnet.flop.network/transactions/" + row.terminal_event;
+    link.href = "https://testnet.flopscan.io/transactions/" + row.terminal_event;
     link.target = "_blank"; link.rel = "noreferrer";
     summary.append(link);
    }
@@ -288,13 +310,16 @@ function renderReceipts() {
   if (row.response_status) summary.append(el("div", "", "HTTP " + row.response_status));
   card.append(summary);
   const details = el("details"), title = el("summary", "", t("details"));
-  const safe = Object.fromEntries(["request_id", "model", "state", "response_status", "reserved_spend", "settled_spend", "settled_spend_raw", "terminal_event", "channel_id", "receipt_error", "miner", "opening_tx", "opening_fee_estimate_raw", "miner_paid_raw", "burned_raw"].filter(k => k in row).map(k => [k, row[k]]));
+  const safe = Object.fromEntries(["request_id", "model", "state", "response_status", "reserved_spend", "settled_spend", "settled_spend_raw", "terminal_event", "channel_id", "receipt_error", "miner", "opening_tx", "settled_gn", "opening_fee_estimate_raw", "miner_paid_raw", "burned_raw"].filter(k => k in row).map(k => [k, row[k]]));
   details.append(title, el("pre", "", JSON.stringify(safe, null, 2)), el("p", "micro", t("ledgerNotice")));
   card.append(details); $("receipts").append(card);
  }
 }
 function renderState(next) {
  state = next;
+ if (state.account && ["ed25519", "sr25519"].includes(state.account.type)) {
+  try { localStorage.setItem(WALLET_SCHEME + state.account.address, state.account.type); } catch {}
+ }
  $("author-did").textContent = state.author_did;
  $("quota").textContent = state.auth ? amount(state.auth.remaining_quota, lang, 4) : "—";
  $("expires").textContent = state.auth?.expires_at ? new Date(state.auth.expires_at).toLocaleString(lang, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "—";
@@ -303,22 +328,19 @@ function renderState(next) {
  $("connect-label").textContent = state.account ? short(state.account.address, 6, 5) : t("connect");
  $("disconnect").hidden = !state.account;
  $("did-input").value = state.expected_did || $("did-input").value;
+ if (state.gateway_block) $("route").value = "direct";
+ $("custom-model").hidden = $("route").value !== "direct";
  const selected = $("model-select").value, select = $("model-select"); select.replaceChildren();
  for (const model of state.models) {
   const option = el("option", "", model.name);
   option.value = model.id;
-  option.disabled = Boolean(state.auth && state.auth.model !== model.id);
+  option.disabled = Boolean($("route").value === "gateway" && state.auth && state.auth.model !== model.id);
   if (option.disabled) option.textContent += " · " + t("notAuthorized");
   select.append(option);
  }
- if (state.direct?.available && state.gateway_block && !state.models.some(m => m.id === "qwen/qwen2.5-0.5b-instruct")) {
-  const option = el("option", "", "Qwen2.5 0.5B Instruct (devnet)");
-  option.value = "qwen/qwen2.5-0.5b-instruct";
-  select.append(option);
- }
  if (!select.options.length) select.append(el("option", "", state.models_checked_at ? t("emptyCatalog") : t("noCatalog")));
- else select.value = state.auth?.model || ([...select.options].some(o => o.value === selected) ? selected : select.options[0].value);
- $("model-access").textContent = state.auth ? t("oneModel") : "";
+ else select.value = ($("route").value === "gateway" && state.auth?.model) || ([...select.options].some(o => o.value === selected) ? selected : select.options[0].value);
+ $("model-access").textContent = state.auth && $("route").value === "gateway" ? t("oneModel") : "";
  const numbers = metrics(state.requests);
  $("settled").textContent = amount(numbers.settled, lang) + (numbers.unknownSettled ? " + ?" : "") + (numbers.settled !== null ? " FLOP" : "");
  $("settled").title = numbers.settledExactRaw ? rawFlop(numbers.settledExactRaw) + " FLOP" : t("ledgerNotice");
@@ -330,7 +352,7 @@ function renderState(next) {
  $("session-limit").value = state.limits.session_cap;
  $("reconcile-note").hidden = !state.unresolved.length;
  $("reconcile").disabled = directActive(state.direct?.job?.phase);
- renderReceipts(); renderConversations(); renderDirect(); updateSend();
+ renderFaucet(); renderReceipts(); renderConversations(); renderDirect(); updateSend();
 }
 function translate() {
  document.documentElement.lang = lang;
@@ -347,8 +369,11 @@ function translate() {
  if (state) renderState(state);
  renderConversations(); renderMessages();
 }
+function selectedModel() {
+ return ($("route").value === "direct" && $("direct-model").value.trim()) || $("model-select").value;
+}
 function updateSend() {
- $("send").disabled = !canSend(state, busy, $("prompt").value, $("model-select").value);
+ $("send").disabled = !canSend(state, busy, $("prompt").value, selectedModel(), undefined, $("route").value);
  $("new-chat").disabled = busy;
  $("connect").disabled = busy;
  $("model-select").disabled = busy || !$("model-select").options.length;
@@ -390,13 +415,14 @@ $("load-accounts").addEventListener("click", async () => {
    const option = el("option", "", (account.name || t("selectAccount")) + " · " + short(account.address));
    option.value = account.address; $("account-select").append(option);
   }
+  selectScheme();
   $("prepare-challenge").disabled = false;
  } catch (error) { $("wallet-error").textContent = error.detail || formatError(error); $("wallet-error").hidden = false; } finally { $("load-accounts").disabled = false; }
 });
 $("prepare-challenge").addEventListener("click", async () => {
  $("prepare-challenge").disabled = true; $("wallet-error").hidden = true;
  try {
-  challenge = await api("challenge", { address: $("account-select").value, did: $("did-input").value.trim() });
+  challenge = await api("challenge", { address: $("account-select").value, type: $("key-type").value, did: $("did-input").value.trim() });
   $("challenge-account").textContent = challenge.account.did + "\n" + challenge.account.address;
   $("challenge-message").textContent = challenge.message;
   $("challenge-section").hidden = false; $("sign-challenge").disabled = false;
@@ -415,17 +441,29 @@ $("sign-challenge").addEventListener("click", async () => {
   else { c.account = state.account.address; save(); }
   $("wallet-dialog").close();
   banner(state.connected ? t("connected") : state.gateway_block ? t("directLocalLogin") : t("readinessError"), state.connected ? "success" : "");
+  if (state.gateway_block === "ENROLLMENT_UNAVAILABLE") banner(formatError({error:state.gateway_block}));
+  void refreshFaucet();
   renderMessages();
- } catch (error) { $("wallet-error").textContent = error?.message || formatError(error); $("wallet-error").hidden = false;
+ } catch (error) {
+  $("wallet-error").textContent = error?.error === "SIGNATURE_INVALID" ? t("walletSignatureHelp") : error?.message || formatError(error);
+  $("wallet-error").hidden = false;
   try { renderState(await (await fetch("/api/state")).json()); } catch {}
  }
 });
-$("account-select").addEventListener("change", () => { challenge = null; $("challenge-section").hidden = true; });
+function selectScheme() {
+ const address = $("account-select").value;
+ let remembered;
+ try { remembered = localStorage.getItem(WALLET_SCHEME + address); } catch {}
+ const reported = accounts.find(account => account.address === address)?.type;
+ $("key-type").value = ["ed25519", "sr25519"].includes(remembered) ? remembered : reported === "ed25519" ? "ed25519" : "sr25519";
+}
+$("key-type").addEventListener("change", () => { challenge = null; $("challenge-section").hidden = true; });
+$("account-select").addEventListener("change", () => { selectScheme(); challenge = null; $("challenge-section").hidden = true; });
 $("did-input").addEventListener("input", () => { challenge = null; $("challenge-section").hidden = true; });
 $("chat-form").addEventListener("submit", async event => {
  event.preventDefault();
- const text = $("prompt").value.trim(), model = $("model-select").value;
- if (!canSend(state, busy, text, model)) return;
+ const text = $("prompt").value.trim(), model = selectedModel();
+ if (!canSend(state, busy, text, model, undefined, $("route").value)) return;
  const c = currentConversation();
  if (c.account && c.account !== state.account.address) { banner(t("readinessError"), "error"); return; }
  const messages = contextFor(c, text);
@@ -435,8 +473,9 @@ $("chat-form").addEventListener("submit", async event => {
  busy = true; save(); $("prompt").value = ""; banner(""); renderConversations(); renderMessages(); updateSend();
  document.querySelector(".chat-area").scrollTop = document.querySelector(".chat-area").scrollHeight;
  try {
-  const result = await api("chat", { request_id: turn.id, model, messages, max_tokens: maxTokens, max_cost_flop: requestLimit });
+  const result = await api("chat", { request_id: turn.id, route: $("route").value, model, messages, max_tokens: maxTokens, max_cost_flop: requestLimit });
   if (result.completion) { turn.answer = result.completion.text; turn.usage = result.completion.usage; turn.finish = result.completion.finish_reason; turn.state = "answered"; }
+  else if (result.direct_offer) { turn.state = "choose_miner"; }
   else { turn.error = result.error ? formatError(result.error) : t("reconcileOnly"); turn.state = "failed"; }
   if (result.state) renderState(result.state);
   if (result.error) banner(formatError(result.error), "error");
@@ -453,6 +492,8 @@ $("prompt").addEventListener("input", updateSend);
 $("prompt").addEventListener("keydown", event => {
  if (event.key === "Enter" && !event.shiftKey && !event.isComposing) { event.preventDefault(); if (!$("send").disabled) $("chat-form").requestSubmit(); }
 });
+$("route").addEventListener("change", () => { if (state) renderState(state); });
+$("direct-model").addEventListener("input", updateSend);
 $("model-select").addEventListener("change", updateSend);
 $("new-chat").addEventListener("click", () => { if (!busy) { newConversation(); $("prompt").focus(); } });
 document.querySelectorAll(".suggestion").forEach(button => button.addEventListener("click", () => { $("prompt").value = button.dataset[lang === "fr" ? "promptFr" : "promptEn"]; updateSend(); $("prompt").focus(); }));
@@ -481,7 +522,7 @@ function renderDirect() {
  const direct = state?.direct;
  const conversation = conversations.find(c => c.id === activeId);
  const turn = conversation?.turns.at(-1);
- $("direct-choice").hidden = !direct?.request_id || direct.request_id !== turn?.id || turn?.state !== "failed";
+ $("direct-choice").hidden = !direct?.request_id || direct.request_id !== turn?.id || !["failed","choose_miner"].includes(turn?.state);
  const select = $("direct-miner"), previous = select.value;
  select.replaceChildren(el("option", "", "—"));
  select.options[0].value = "";
@@ -492,6 +533,7 @@ function renderDirect() {
   select.append(option);
  }
  if ([...select.options].some(o => o.value === previous)) select.value = previous;
+ $("miners-empty").hidden = Boolean(direct?.miners?.length);
  $("direct-prepare").disabled = !select.value || busy;
  const job = direct?.job;
  if (!job) return;
@@ -509,6 +551,7 @@ function renderDirect() {
   const display = value => rawFlop(value) + " FLOP";
   $("direct-preview").textContent = [
    job.miner.name + " · " + job.miner.address, job.miner.endpoint, quote.model + " · " + quote.precision,
+   "Worker " + quote.worker_version + " · " + quote.duration_seconds + " s",
    t("responseLength") + "  " + quote.max_tokens,
    t("directReserve") + "  " + display(quote.escrow), t("directFee") + "  " + display(quote.fee),
    t("directTotal") + "  " + display(quote.total), t("directFeeCap") + "  " + display(quote.fee_cap),
@@ -546,7 +589,7 @@ $("direct-prepare").addEventListener("click", async () => {
  busy = true;
  $("direct-error").hidden = true;
  try {
-  renderState(await api("direct/prepare", { request_id: state.direct.request_id, miner: $("direct-miner").value }));
+  renderState(await api("direct/prepare", { request_id: state.direct.request_id, miner: $("direct-miner").value, escrow: $("escrow").value.trim().replace(",", ".") }));
   $("direct-dialog").showModal();
   syncDirectPolling();
  } catch (error) {
@@ -591,6 +634,56 @@ async function closeDirect() {
 $("direct-close").addEventListener("click", closeDirect);
 $("direct-dialog").addEventListener("cancel", event => { event.preventDefault(); void closeDirect(); });
 
+let faucet = null, faucetOwner = null, faucetBusy = false, faucetError = "";
+function renderFaucet() {
+ const account = state?.account?.address;
+ const data = account && account === faucetOwner ? faucet : null;
+ const status = $("faucet-status");
+ status.replaceChildren();
+ $("faucet-refresh").disabled = !account || faucetBusy;
+ const claim = data?.claim;
+ $("faucet-claim").disabled = account !== faucetOwner || !data?.open || faucetBusy || claim?.status === "unknown" || claim?.retry_at > Date.now()/1000;
+ if (data && account === faucetOwner) {
+  status.append(el("div", "", data.status + " · " + t("fRemaining") + " " + data.remainingFlop + " FLOP"),
+    el("div", "", t("fBalance") + " " + (rawFlop(data.free_raw) ?? "—") + " FLOP"));
+  if (data.rolloverRequiresSpend) status.append(el("div", "", t("fRollover")));
+  if (claim?.status === "unknown") status.append(el("div", "", t("fUnknown")));
+  if (claim?.status === "refused") {
+   status.append(el("div", "", "HTTP " + claim.http + " · " + (claim.reason === "agent_spend_missing" ? t("fSpend") : claim.reason)));
+   if (claim.retryAfterSeconds) status.append(el("div", "", t("fWait") + " " + claim.retryAfterSeconds + " s"));
+  }
+  if (/^0x[0-9a-f]{64}$/i.test(claim?.txHash)) {
+   const link = el("a", "", t("fTx") + " · " + (claim.finality || "HTTP 200"));
+   link.href = "https://testnet.flopscan.io/transactions/" + claim.txHash;
+   link.rel = "noreferrer"; link.target = "_blank"; status.append(link);
+  }
+ }
+ if (faucetError && account === faucetOwner) status.append(el("div", "", faucetError));
+}
+async function refreshFaucet() {
+ if (!state?.account || faucetBusy) return;
+ faucetOwner = state.account.address; faucet = null; faucetBusy = true; faucetError = ""; renderFaucet();
+ try { faucet = await api("faucet/status"); }
+ catch (e) { faucetError = formatError(e); }
+ finally { faucetBusy = false; renderFaucet(); }
+}
+$("faucet-refresh").addEventListener("click", refreshFaucet);
+$("faucet-claim").addEventListener("click", async () => {
+ if ($("faucet-claim").disabled) return;
+ faucetBusy = true; faucetError = ""; renderFaucet();
+ try {
+  const owner = state.account.address;
+  const wallet = extension || await window.injectedWeb3?.talisman?.enable("FLOP DID Chat");
+  if (!wallet?.signer?.signRaw) throw {detail:t("noTalisman")};
+  const c = await api("faucet/prepare");
+  if (c.address !== owner || c.message !== ["flop-faucet-agent/v1", "0x918abd58fb16306b30ef3886514cfaebffecb4de43e82b6f8ec4795c43cfd800", owner, c.nonce].join("|")) throw {error:"CHALLENGE_INVALID"};
+  const data = "0x" + Array.from(new TextEncoder().encode(c.message), b => b.toString(16).padStart(2,"0")).join("");
+  const {signature} = await wallet.signer.signRaw({address:owner, data, type:"bytes"});
+  if (owner !== state.account?.address) throw {error:"CONNECT_REQUIRED"};
+  faucet.claim = await api("faucet/submit", {nonce:c.nonce, signature});
+ } catch (e) { faucetError = e.message || formatError(e); faucet = null; }
+ finally { faucetBusy = false; renderFaucet(); }
+});
 async function boot() {
  translate();
  try {
@@ -598,6 +691,7 @@ async function boot() {
   if (!activeId) activeId = conversations.at(-1)?.id || null;
   if (!activeId) newConversation();
   renderMessages(); renderConversations();
+  if (state.account) void refreshFaucet();
   if (directActive(state?.direct?.job?.phase)) {
    $("direct-dialog").showModal();
    syncDirectPolling();

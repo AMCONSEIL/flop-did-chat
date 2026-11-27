@@ -1,8 +1,8 @@
 // Keep direct writes inside the pinned SDK's explicit compatibility list.
 import { assertSupportedSpecVersion } from "./node_modules/@flop-labs/sdk/dist/runtime-compatibility.js";
-export const DEVNET_GENESIS = "0x99c172c095340ace980631f9123544c6bebd4839f3437e463533422d8be2d631";
+export const TESTNET_GENESIS = "0x918abd58fb16306b30ef3886514cfaebffecb4de43e82b6f8ec4795c43cfd800";
 export function checkDirectNetwork(api) {
-  if (api.genesisHash.toHex() !== DEVNET_GENESIS || api.registry.chainDecimals[0] !== 18) {
+  if (api.genesisHash.toHex() !== TESTNET_GENESIS || api.registry.chainSS58 !== 42 || api.registry.chainDecimals[0] !== 18 || api.registry.chainTokens[0] !== "FLOP") {
     throw Object.assign(new Error("Unexpected network"), { code: "DIRECT_NETWORK_MISMATCH" });
   }
   const runtime = Number(api.runtimeVersion.specVersion.toString());
